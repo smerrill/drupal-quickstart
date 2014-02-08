@@ -170,6 +170,7 @@ Theme system
 - Carl Wiedemann 'c4rl' http://drupal.org/user/235047
 - Steve Oliver 'steveoliver' http://drupal.org/user/42327
 - Fabian Franz 'Fabianx' http://drupal.org/user/693738
+- Joël Pittet 'joelpittet' https://drupal.org/user/160302
 
 Token system
 - Dave Reid 'davereid' http://drupal.org/user/53892
@@ -210,8 +211,14 @@ Node Access
 Module maintainers
 ------------------
 
+Action module
+- ?
+
 Aggregator module
 - Paris Liakos 'rootatwc' http://drupal.org/user/1011436
+
+Ban module
+- ?
 
 Basic Auth module
 - Klaus Purer 'klausi' http://drupal.org/user/262198
@@ -261,6 +268,9 @@ Custom block module
 Database Logging module
 - Khalid Baheyeldin 'kbahey' http://drupal.org/user/4063
 
+DateTime module
+- ?
+
 E-mail module
 - Nils Destoop 'zuuperman' https://drupal.org/user/361625
 
@@ -270,6 +280,9 @@ Edit module
 
 Editor module
 - Wim Leers 'Wim Leers' http://drupal.org/user/99777
+
+Entity module
+- ?
 
 Entity Reference module
 - Amitai Burstein 'Amitaibu' http://drupal.org/user/57511
@@ -324,6 +337,12 @@ Menu Link module
 - Károly Négyesi 'chx' http://drupal.org/user/9446
 - Peter Wolanin 'pwolanin' http://drupal.org/user/49851
 
+Migrate module
+- ?
+
+Migrate (Drupal) module
+- ?
+
 Node module
 - Moshe Weitzman 'moshe weitzman' http://drupal.org/user/23
 - David Strauss 'David Strauss' http://drupal.org/user/93254
@@ -339,9 +358,6 @@ Path module
 
 Phone module
 - Dave Reid 'davereid' http://drupal.org/user/53892
-
-PHP module
-- ?
 
 Picture module
 - Peter Droogmans 'attiks' http://drupal.org/user/105002

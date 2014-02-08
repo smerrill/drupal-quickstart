@@ -52,6 +52,7 @@ class CommentLockTest extends UnitTestCase {
     $methods = get_class_methods('Drupal\comment\Entity\Comment');
     unset($methods[array_search('preSave', $methods)]);
     unset($methods[array_search('postSave', $methods)]);
+    $methods[] = 'onSaveOrDelete';
     $comment = $this->getMockBuilder('Drupal\comment\Entity\Comment')
       ->disableOriginalConstructor()
       ->setMethods($methods)
@@ -72,15 +73,6 @@ class CommentLockTest extends UnitTestCase {
     $storage_controller = $this->getMock('Drupal\comment\CommentStorageControllerInterface');
     $comment->preSave($storage_controller);
     $comment->postSave($storage_controller);
-  }
-
-  /**
-   * {@inheritdoc}
-   */
-  protected function tearDown() {
-    parent::tearDown();
-    $container = new ContainerBuilder();
-    \Drupal::setContainer($container);
   }
 
 }

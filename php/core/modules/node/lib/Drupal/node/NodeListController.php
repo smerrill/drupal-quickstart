@@ -90,23 +90,25 @@ class NodeListController extends EntityListController {
    * {@inheritdoc}
    */
   public function buildRow(EntityInterface $entity) {
+    /** @var \Drupal\node\NodeInterface $entity */
     $mark = array(
       '#theme' => 'mark',
       '#mark_type' => node_mark($entity->id(), $entity->getChangedTime()),
     );
     $langcode = $entity->language()->id;
-    $uri = $entity->uri();
+    $uri = $entity->urlInfo();
     $row['title']['data'] = array(
       '#type' => 'link',
       '#title' => $entity->label(),
-      '#href' => $uri['path'],
+      '#route_name' => $uri['route_name'],
+      '#route_parameters' => $uri['route_parameters'],
       '#options' => $uri['options'] + ($langcode != Language::LANGCODE_NOT_SPECIFIED && isset($languages[$langcode]) ? array('language' => $languages[$langcode]) : array()),
       '#suffix' => ' ' . drupal_render($mark),
     );
     $row['type'] = String::checkPlain(node_get_type_label($entity));
     $row['author']['data'] = array(
       '#theme' => 'username',
-      '#account' => $entity->getAuthor(),
+      '#account' => $entity->getOwner(),
     );
     $row['status'] = $entity->isPublished() ? $this->t('published') : $this->t('not published');
     $row['changed'] = $this->dateService->format($entity->getChangedTime(), 'short');

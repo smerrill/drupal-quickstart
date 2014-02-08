@@ -8,11 +8,12 @@
 namespace Drupal\Core\Entity;
 
 use Drupal\Component\Plugin\Exception\InvalidPluginDefinitionException;
-use Drupal\Component\Plugin\Exception\UnknownPluginException;
+use Drupal\Component\Plugin\Exception\PluginNotFoundException;
 use Drupal\Component\Plugin\PluginManagerBase;
 use Drupal\Component\Utility\NestedArray;
 use Drupal\Component\Utility\String;
 use Drupal\Core\Field\FieldDefinition;
+use Drupal\Core\Cache\Cache;
 use Drupal\Core\Cache\CacheBackendInterface;
 use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\Language\LanguageManager;
@@ -144,7 +145,8 @@ class EntityManager extends PluginManagerBase implements EntityManagerInterface 
     $this->discovery = new AnnotatedClassDiscovery('Entity', $namespaces, 'Drupal\Core\Entity\Annotation\EntityType');
     $this->discovery = new InfoHookDecorator($this->discovery, 'entity_info');
     $this->discovery = new AlterDecorator($this->discovery, 'entity_info');
-    $this->discovery = new CacheDecorator($this->discovery, 'entity_info:' . $this->languageManager->getCurrentLanguage()->id, 'cache', CacheBackendInterface::CACHE_PERMANENT, array('entity_info' => TRUE));
+    $this->discovery = new CacheDecorator($this->discovery, 'entity_info:' . $this->languageManager->getCurrentLanguage()->id, 'cache', Cache::PERMANENT, array('entity_info' => TRUE));
+
     $this->container = $container;
   }
 
@@ -168,7 +170,7 @@ class EntityManager extends PluginManagerBase implements EntityManagerInterface 
       return NULL;
     }
 
-    throw new UnknownPluginException($entity_type_id, sprintf('The "%s" entity type does not exist.', $entity_type_id));
+    throw new PluginNotFoundException($entity_type_id, sprintf('The "%s" entity type does not exist.', $entity_type_id));
   }
 
   /**
@@ -280,22 +282,6 @@ class EntityManager extends PluginManagerBase implements EntityManagerInterface 
   /**
    * {@inheritdoc}
    */
-  public function getForm(EntityInterface $entity, $operation = 'default', array $form_state = array()) {
-    $form_state['build_info'] = isset($form_state['build_info']) ? $form_state['build_info'] : array();
-    $controller = $this->getFormController($entity->entityType(), $operation);
-    $controller->setEntity($entity);
-    $form_state['build_info'] += array(
-      'callback_object' => $controller,
-      'base_form_id' => $controller->getBaseFormID(),
-      'args' => array(),
-    );
-    $form_id = $controller->getFormID();
-    return \Drupal::formBuilder()->buildForm($form_id, $form_state);
-  }
-
-  /**
-   * {@inheritdoc}
-   */
   public function getAdminRouteInfo($entity_type, $bundle) {
     if (($entity_info = $this->getDefinition($entity_type)) && $admin_form = $entity_info->getLinkTemplate('admin-form')) {
       return array(
@@ -362,7 +348,7 @@ class EntityManager extends PluginManagerBase implements EntityManagerInterface 
           }
         }
 
-        $this->cache->set($cid, $this->entityFieldInfo[$entity_type], CacheBackendInterface::CACHE_PERMANENT, array('entity_info' => TRUE, 'entity_field_info' => TRUE));
+        $this->cache->set($cid, $this->entityFieldInfo[$entity_type], Cache::PERMANENT, array('entity_info' => TRUE, 'entity_field_info' => TRUE));
       }
     }
 
@@ -395,7 +381,7 @@ class EntityManager extends PluginManagerBase implements EntityManagerInterface 
   public function clearCachedFieldDefinitions() {
     unset($this->entityFieldInfo);
     unset($this->fieldDefinitions);
-    $this->cache->deleteTags(array('entity_field_info' => TRUE));
+    Cache::deleteTags(array('entity_field_info' => TRUE));
   }
 
   /**
@@ -424,7 +410,7 @@ class EntityManager extends PluginManagerBase implements EntityManagerInterface 
           }
         }
         $this->moduleHandler->alter('entity_bundle_info', $this->bundleInfo);
-        $this->cache->set("entity_bundle_info:$langcode", $this->bundleInfo, CacheBackendInterface::CACHE_PERMANENT, array('entity_info' => TRUE));
+        $this->cache->set("entity_bundle_info:$langcode", $this->bundleInfo, Cache::PERMANENT, array('entity_info' => TRUE));
       }
     }
 

@@ -26,7 +26,6 @@ class ConfigOverridesPriorityTest extends DrupalUnitTestBase {
   }
 
   public function testOverridePriorities() {
-    global $conf;
     $GLOBALS['config_test_run_module_overrides'] = FALSE;
 
     $non_overridden_mail =  'site@example.com';
@@ -85,18 +84,20 @@ class ConfigOverridesPriorityTest extends DrupalUnitTestBase {
     // Configure a global override to simulate overriding using settings.php. Do
     // not override system.site:mail or system.site:slogan to prove that the
     // language and module overrides still apply.
-    $conf['system.site']['name'] = 'Site name global conf override';
+    $GLOBALS['config']['system.site']['name'] = 'Site name global conf override';
     $config_factory->reset('system.site');
     $this->assertEqual('Site name global conf override', $config_factory->get('system.site')->get('name'));
     $this->assertEqual($module_overridden_slogan, $config_factory->get('system.site')->get('slogan'));
     $this->assertEqual($language_overridden_mail, $config_factory->get('system.site')->get('mail'));
     $this->assertEqual(50, $config_factory->get('system.site')->get('weight_select_max'));
 
-    $config_factory->disableOverrides();
+    $old_state = $config_factory->getOverrideState();
+    $config_factory->setOverrideState(FALSE);
     $this->assertEqual($non_overridden_name, $config_factory->get('system.site')->get('name'));
     $this->assertEqual($non_overridden_slogan, $config_factory->get('system.site')->get('slogan'));
     $this->assertEqual($non_overridden_mail, $config_factory->get('system.site')->get('mail'));
     $this->assertEqual(50, $config_factory->get('system.site')->get('weight_select_max'));
+    $config_factory->setOverrideState($old_state);
 
     unset($GLOBALS['config_test_run_module_overrides']);
   }

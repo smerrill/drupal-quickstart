@@ -40,7 +40,8 @@ use Drupal\shortcut\ShortcutInterface;
  *     "label" = "title"
  *   },
  *   links = {
- *     "edit-form" = "/admin/config/user-interface/shortcut/link/{shortcut}"
+ *     "delete-form" = "shortcut.link_delete",
+ *     "edit-form" = "shortcut.link_edit"
  *   }
  * )
  */
@@ -181,7 +182,7 @@ class Shortcut extends ContentEntityBase implements ShortcutInterface {
       ->setComputed(TRUE);
 
     $item_definition = $fields['path']->getItemDefinition();
-    $item_definition->setClass('\Drupal\shortcut\ShortcutPath');
+    $item_definition->setClass('\Drupal\shortcut\ShortcutPathItem');
     $fields['path']->setItemDefinition($item_definition);
 
     return $fields;

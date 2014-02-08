@@ -108,7 +108,7 @@ class CommentTranslationUITest extends ContentTranslationUITest {
     $values['entity_id'] = $node->id();
     $values['entity_type'] = 'node';
     $values['field_id'] = $node_bundle;
-    $values['uid'] = $node->getAuthorId();
+    $values['uid'] = $node->getOwnerId();
     return parent::createEntity($values, $langcode, $node_bundle);
   }
 
@@ -134,11 +134,11 @@ class CommentTranslationUITest extends ContentTranslationUITest {
     $languages = language_list();
 
     // Check that simple users cannot see unpublished field translations.
-    $uri = $entity->uri();
+    $path = $entity->getSystemPath();
     foreach ($this->langcodes as $index => $langcode) {
       $translation = $this->getTranslation($entity, $langcode);
       $value = $this->getValue($translation, 'comment_body', $langcode);
-      $this->drupalGet($uri['path'], array('language' => $languages[$langcode]));
+      $this->drupalGet($path, array('language' => $languages[$langcode]));
       if ($index > 0) {
         $this->assertNoRaw($value, 'Unpublished field translation is not shown.');
       }

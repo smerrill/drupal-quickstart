@@ -31,6 +31,13 @@ class CommentFormController extends ContentEntityFormController {
   protected $fieldInfo;
 
   /**
+   * The current user.
+   *
+   * @var \Drupal\Core\Session\AccountInterface
+   */
+  protected $currentUser;
+
+  /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container) {
@@ -77,14 +84,15 @@ class CommentFormController extends ContentEntityFormController {
    * Overrides Drupal\Core\Entity\EntityFormController::form().
    */
   public function form(array $form, array &$form_state) {
+    /** @var \Drupal\comment\CommentInterface $comment */
     $comment = $this->entity;
     $entity = $this->entityManager->getStorageController($comment->entity_type->value)->load($comment->entity_id->value);
     $field_name = $comment->field_name->value;
-    $instance = $this->fieldInfo->getInstance($entity->entityType(), $entity->bundle(), $field_name);
+    $instance = $this->fieldInfo->getInstance($entity->getEntityTypeId(), $entity->bundle(), $field_name);
 
     // Use #comment-form as unique jump target, regardless of entity type.
     $form['#id'] = drupal_html_id('comment_form');
-    $form['#theme'] = array('comment_form__' . $entity->entityType() . '__' . $entity->bundle() . '__' . $field_name, 'comment_form');
+    $form['#theme'] = array('comment_form__' . $entity->getEntityTypeId() . '__' . $entity->bundle() . '__' . $field_name, 'comment_form');
 
     $anonymous_contact = $instance->getSetting('anonymous');
     $is_admin = $comment->id() && $this->currentUser->hasPermission('administer comments');
@@ -97,7 +105,7 @@ class CommentFormController extends ContentEntityFormController {
     // If not replying to a comment, use our dedicated page callback for new
     // Comments on entities.
     if (!$comment->id() && empty($comment->pid->target_id)) {
-      $form['#action'] = url('comment/reply/' . $entity->entityType() . '/' . $entity->id() . '/' . $field_name);
+      $form['#action'] = url('comment/reply/' . $entity->getEntityTypeId() . '/' . $entity->id() . '/' . $field_name);
     }
 
     if (isset($form_state['comment_preview'])) {
@@ -212,13 +220,13 @@ class CommentFormController extends ContentEntityFormController {
     // Used for conditional validation of author fields.
     $form['is_anonymous'] = array(
       '#type' => 'value',
-      '#value' => ($comment->id() ? !$comment->uid->target_id : $this->currentUser->isAnonymous()),
+      '#value' => ($comment->id() ? !$comment->getOwnerId() : $this->currentUser->isAnonymous()),
     );
 
     // Add internal comment properties.
     $original = $comment->getUntranslated();
     foreach (array('cid', 'pid', 'entity_id', 'entity_type', 'field_id', 'uid', 'langcode') as $key) {
-      $key_name = key($comment->$key->offsetGet(0)->getPropertyDefinitions());
+      $key_name = key($comment->$key->first()->getPropertyDefinitions());
       $form[$key] = array('#type' => 'value', '#value' => $original->$key->{$key_name});
     }
 
@@ -313,13 +321,14 @@ class CommentFormController extends ContentEntityFormController {
    * Overrides Drupal\Core\Entity\EntityFormController::submit().
    */
   public function submit(array $form, array &$form_state) {
+    /** @var \Drupal\comment\CommentInterface $comment */
     $comment = parent::submit($form, $form_state);
 
     // If the comment was posted by a registered user, assign the author's ID.
     // @todo Too fragile. Should be prepared and stored in comment_form()
     // already.
     if (!$comment->is_anonymous && !empty($comment->name->value) && ($account = user_load_by_name($comment->name->value))) {
-      $comment->uid->target_id = $account->id();
+      $comment->setOwner($account);
     }
     // If the comment was posted by an anonymous user and no author name was
     // required, use "Anonymous" by default.
@@ -368,7 +377,7 @@ class CommentFormController extends ContentEntityFormController {
     $entity = entity_load($form_state['values']['entity_type'], $form_state['values']['entity_id']);
     $comment = $this->entity;
     $field_name = $comment->field_name->value;
-    $uri = $entity->uri();
+    $uri = $entity->urlInfo();
 
     if ($this->currentUser->hasPermission('post comments') && ($this->currentUser->hasPermission('administer comments') || $entity->{$field_name}->status == COMMENT_OPEN)) {
       // Save the anonymous user information to a cookie for reuse.
@@ -393,24 +402,23 @@ class CommentFormController extends ContentEntityFormController {
       }
       $query = array();
       // Find the current display page for this comment.
-      $instance = $this->fieldInfo->getInstance($entity->entityType(), $entity->bundle(), $field_name);
+      $instance = $this->fieldInfo->getInstance($entity->getEntityTypeId(), $entity->bundle(), $field_name);
       $page = comment_get_display_page($comment->id(), $instance);
       if ($page > 0) {
         $query['page'] = $page;
       }
       // Redirect to the newly posted comment.
-      $redirect = array($uri['path'], array('query' => $query, 'fragment' => 'comment-' . $comment->id()) + $uri['options']);
+      $uri['options'] += array('query' => $query, 'fragment' => 'comment-' . $comment->id());
     }
     else {
       watchdog('content', 'Comment: unauthorized comment submitted or comment submitted to a closed post %subject.', array('%subject' => $comment->subject->value), WATCHDOG_WARNING);
       drupal_set_message($this->t('Comment: unauthorized comment submitted or comment submitted to a closed post %subject.', array('%subject' => $comment->subject->value)), 'error');
       // Redirect the user to the entity they are commenting on.
-      $redirect = $uri['path'];
     }
-    $form_state['redirect'] = $redirect;
+    $form_state['redirect_route'] = $uri;
     // Clear the block and page caches so that anonymous users see the comment
     // they have posted.
     Cache::invalidateTags(array('content' => TRUE));
-    $this->entityManager->getViewBuilder($entity->entityType())->resetCache(array($entity));
+    $this->entityManager->getViewBuilder($entity->getEntityTypeId())->resetCache(array($entity));
   }
 }

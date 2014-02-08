@@ -48,7 +48,7 @@ class FieldAttachOtherTest extends FieldUnitTestBase {
     $this->createFieldWithInstance('_2');
 
     $entity_type = 'entity_test';
-    $entity_init = entity_create($entity_type, array());
+    $entity_init = entity_create($entity_type);
 
     // Populate values to be displayed.
     $values = $this->_generateTestFieldValues($this->field->getCardinality());
@@ -261,7 +261,7 @@ class FieldAttachOtherTest extends FieldUnitTestBase {
     $this->assertFalse(cache('field')->get($cid), 'Cached: no cache entry on insert');
 
     // Load, and check that a cache entry is present with the expected values.
-    $controller = $this->container->get('entity.manager')->getStorageController($entity->entityType());
+    $controller = $this->container->get('entity.manager')->getStorageController($entity->getEntityTypeId());
     $controller->resetCache();
     $controller->load($entity->id());
     $cache = cache('field')->get($cid);

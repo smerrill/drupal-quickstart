@@ -10,9 +10,6 @@ namespace Drupal\Tests\Core\Utility {
 use Drupal\Core\Language\Language;
 use Drupal\Core\Utility\LinkGenerator;
 use Drupal\Tests\UnitTestCase;
-use Symfony\Cmf\Component\Routing\RouteObjectInterface;
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\DependencyInjection\ParameterBag\ParameterBag;
 
 /**
  * Tests the link generator.
@@ -43,12 +40,11 @@ class LinkGeneratorTest extends UnitTestCase {
   protected $moduleHandler;
 
   /**
+   * The mocked path alias manager.
    *
-   * The mocked language manager.
-   *
-   * @var \PHPUnit_Framework_MockObject_MockObject
+   * @var \Drupal\Core\Path\AliasManagerInterface|\PHPUnit_Framework_MockObject_MockObject
    */
-  protected $languageManager;
+  protected $aliasManager;
 
   /**
    * Contains the LinkGenerator default options.
@@ -57,6 +53,7 @@ class LinkGeneratorTest extends UnitTestCase {
     'query' => array(),
     'html' => FALSE,
     'language' => NULL,
+    'set_active_class' => FALSE,
   );
 
   /**
@@ -79,18 +76,9 @@ class LinkGeneratorTest extends UnitTestCase {
 
     $this->urlGenerator = $this->getMock('\Drupal\Core\Routing\UrlGenerator', array(), array(), '', FALSE);
     $this->moduleHandler = $this->getMock('Drupal\Core\Extension\ModuleHandlerInterface');
-    $this->languageManager = $this->getMock('Drupal\Core\Language\LanguageManagerInterface');
+    $this->aliasManager = $this->getMock('\Drupal\Core\Path\AliasManagerInterface');
 
-    $this->linkGenerator = new LinkGenerator($this->urlGenerator, $this->moduleHandler, $this->languageManager);
-  }
-
-  /**
-   * Setup a proper language manager.
-   */
-  public function setUpLanguageManager() {
-    $this->languageManager->expects($this->any())
-      ->method('getCurrentLanguage')
-      ->will($this->returnValue(new Language(array('id' => 'en'))));
+    $this->linkGenerator = new LinkGenerator($this->urlGenerator, $this->moduleHandler, $this->aliasManager);
   }
 
   /**
@@ -128,10 +116,6 @@ class LinkGeneratorTest extends UnitTestCase {
 
     $this->moduleHandler->expects($this->once())
       ->method('alter');
-
-    $this->setUpLanguageManager();
-    $request = new Request();
-    $this->linkGenerator->setRequest($request);
 
     $result = $this->linkGenerator->generate('Test', $route_name, $parameters, array('absolute' => $absolute));
     $this->assertTag(array(
@@ -312,50 +296,60 @@ class LinkGeneratorTest extends UnitTestCase {
    *   service.
    */
   public function testGenerateActive() {
-    $this->urlGenerator->expects($this->exactly(7))
+    $this->urlGenerator->expects($this->exactly(8))
       ->method('generateFromRoute')
       ->will($this->returnValueMap(array(
         array('test_route_1', array(), FALSE, '/test-route-1'),
-        array('test_route_1', array(), FALSE, '/test-route-1'),
-        array('test_route_1', array(), FALSE, '/test-route-1'),
-        array('test_route_1', array(), FALSE, '/test-route-1'),
-        array('test_route_3', array(), FALSE, '/test-route-3'),
         array('test_route_3', array(), FALSE, '/test-route-3'),
         array('test_route_4', array('object' => '1'), FALSE, '/test-route-4/1'),
       )));
 
-    $this->moduleHandler->expects($this->exactly(7))
+    $this->urlGenerator->expects($this->exactly(7))
+      ->method('getPathFromRoute')
+      ->will($this->returnValueMap(array(
+        array('test_route_1', array(), 'test-route-1'),
+        array('test_route_3', array(), 'test-route-3'),
+        array('test_route_4', array('object' => '1'), 'test-route-4/1'),
+      )));
+
+    $this->aliasManager->expects($this->exactly(7))
+      ->method('getSystemPath')
+      ->will($this->returnValueMap(array(
+        array('test-route-1', NULL, 'test-route-1'),
+        array('test-route-3', NULL, 'test-route-3'),
+        array('test-route-4/1', NULL, 'test-route-4/1'),
+      )));
+
+    $this->moduleHandler->expects($this->exactly(8))
       ->method('alter');
 
-    $this->setUpLanguageManager();
-
     // Render a link with a path different from the current path.
-    $request = new Request(array(), array(), array('system_path' => 'test-route-2'));
-    $this->linkGenerator->setRequest($request);
-    $result = $this->linkGenerator->generate('Test', 'test_route_1');
-    $this->assertNotTag(array(
+    $result = $this->linkGenerator->generate('Test', 'test_route_1', array(), array('set_active_class' => TRUE));
+    $this->assertTag(array(
       'tag' => 'a',
-      'attributes' => array('class' => 'active'),
+      'attributes' => array('data-drupal-link-system-path' => 'test-route-1'),
     ), $result);
 
     // Render a link with the same path as the current path.
-    $request = new Request(array(), array(), array('system_path' => 'test-route-1', RouteObjectInterface::ROUTE_NAME => 'test_route_1'));
-    // This attribute is expected to be set in a Drupal request by
-    // \Drupal\Core\ParamConverter\ParamConverterManager
-    $raw_variables = new ParameterBag();
-    $request->attributes->set('_raw_variables', $raw_variables);
-    $this->linkGenerator->setRequest($request);
-    $result = $this->linkGenerator->generate('Test', 'test_route_1');
+    $result = $this->linkGenerator->generate('Test', 'test_route_1', array(), array('set_active_class' => TRUE));
     $this->assertTag(array(
       'tag' => 'a',
-      'attributes' => array('class' => 'active'),
+      'attributes' => array('data-drupal-link-system-path' => 'test-route-1'),
+    ), $result);
+
+    // Render a link with the same path as the current path, but with the
+    // set_active_class option disabled.
+    $result = $this->linkGenerator->generate('Test', 'test_route_1', array(), array('set_active_class' => FALSE));
+    $this->assertNotTag(array(
+      'tag' => 'a',
+      'attributes' => array('data-drupal-link-system-path' => 'test-route-1'),
     ), $result);
 
     // Render a link with the same path and language as the current path.
-    $result = $this->linkGenerator->generate('Test', 'test_route_1');
+    $result = $this->linkGenerator->generate('Test', 'test_route_1', array(), array('set_active_class' => TRUE));
     $this->assertTag(array(
       'tag' => 'a',
-      'attributes' => array('class' => 'active'),
+      'attributes' => array('data-drupal-link-system-path' => 'test-route-1'),
     ), $result);
 
     // Render a link with the same path but a different language than the current
@@ -364,27 +358,35 @@ class LinkGeneratorTest extends UnitTestCase {
       'Test',
       'test_route_1',
       array(),
-      array('language' => new Language(array('id' => 'de')))
+      array(
+        'language' => new Language(array('id' => 'de')),
+        'set_active_class' => TRUE,
+      )
     );
-    $this->assertNotTag(array(
+    $this->assertTag(array(
       'tag' => 'a',
-      'attributes' => array('class' => 'active'),
+      'attributes' => array(
+        'data-drupal-link-system-path' => 'test-route-1',
+        'hreflang' => 'de',
+      ),
     ), $result);
 
     // Render a link with the same path and query parameter as the current path.
-    $request = new Request(array('value' => 'example_1'), array(), array('system_path' => 'test-route-3', RouteObjectInterface::ROUTE_NAME => 'test_route_3'));
-    $raw_variables = new ParameterBag();
-    $request->attributes->set('_raw_variables', $raw_variables);
-    $this->linkGenerator->setRequest($request);
     $result = $this->linkGenerator->generate(
       'Test',
       'test_route_3',
       array(),
-      array('query' => array('value' => 'example_1')
-    ));
+      array(
+        'query' => array('value' => 'example_1'),
+        'set_active_class' => TRUE,
+      )
+    );
     $this->assertTag(array(
       'tag' => 'a',
-      'attributes' => array('class' => 'active'),
+      'attributes' => array(
+        'data-drupal-link-system-path' => 'test-route-3',
+        'data-drupal-link-query' => 'regexp:/.*value.*example_1.*/',
+      ),
     ), $result);
 
     // Render a link with the same path but a different query parameter than the
@@ -393,26 +395,35 @@ class LinkGeneratorTest extends UnitTestCase {
       'Test',
       'test_route_3',
       array(),
-      array('query' => array('value' => 'example_2'))
+      array(
+        'query' => array('value' => 'example_2'),
+        'set_active_class' => TRUE,
+      )
     );
-    $this->assertNotTag(array(
+    $this->assertTag(array(
       'tag' => 'a',
-      'attributes' => array('class' => 'active'),
+      'attributes' => array(
+        'data-drupal-link-system-path' => 'test-route-3',
+        'data-drupal-link-query' => 'regexp:/.*value.*example_2.*/',
+      ),
     ), $result);
+
     // Render a link with the same path and query parameter as the current path.
-    $request = new Request(array('value' => 'example_1'), array(), array('system_path' => 'test-route-4/1', RouteObjectInterface::ROUTE_NAME => 'test_route_4'));
-    $raw_variables = new ParameterBag(array('object' => '1'));
-    $request->attributes->set('_raw_variables', $raw_variables);
-    $this->linkGenerator->setRequest($request);
     $result = $this->linkGenerator->generate(
       'Test',
       'test_route_4',
       array('object' => '1'),
-      array('query' => array('value' => 'example_1'))
+      array(
+        'query' => array('value' => 'example_1'),
+        'set_active_class' => TRUE,
+      )
     );
     $this->assertTag(array(
       'tag' => 'a',
-      'attributes' => array('class' => 'active'),
+      'attributes' => array(
+        'data-drupal-link-system-path' => 'test-route-4/1',
+        'data-drupal-link-query' => 'regexp:/.*value.*example_1.*/',
+      ),
     ), $result);
   }
 

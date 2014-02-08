@@ -87,6 +87,11 @@ class Drupal {
   const CORE_COMPATIBILITY = '8.x';
 
   /**
+   * Core minimum schema version.
+   */
+  const CORE_MINIMUM_SCHEMA_VERSION = 8000;
+
+  /**
    * The currently active container object.
    *
    * @var \Symfony\Component\DependencyInjection\ContainerInterface
@@ -129,6 +134,19 @@ class Drupal {
    */
   public static function service($id) {
     return static::$container->get($id);
+  }
+
+  /**
+   * Indicates if a service is defined in the container.
+   *
+   * @param string $id
+   *   The ID of the service to check.
+   *
+   * @return bool
+   *   TRUE if the specified service exists, FALSE otherwise.
+   */
+  public static function hasService($id) {
+    return static::$container && static::$container->has($id);
   }
 
   /**

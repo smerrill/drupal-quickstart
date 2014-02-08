@@ -199,7 +199,7 @@ function hook_entity_bundle_info_alter(&$bundles) {
 function hook_entity_bundle_create($entity_type, $bundle) {
   // When a new bundle is created, the menu needs to be rebuilt to add the
   // Field UI menu item tabs.
-  \Drupal::state()->set('menu_rebuild_needed', TRUE);
+  \Drupal::service('router.builder')->setRebuildNeeded();
 }
 
 /**
@@ -300,7 +300,7 @@ function hook_entity_insert(Drupal\Core\Entity\EntityInterface $entity) {
   // Insert the new entity into a fictional table of all entities.
   db_insert('example_entity')
     ->fields(array(
-      'type' => $entity->entityType(),
+      'type' => $entity->getEntityTypeId(),
       'id' => $entity->id(),
       'created' => REQUEST_TIME,
       'updated' => REQUEST_TIME,
@@ -323,7 +323,7 @@ function hook_entity_update(Drupal\Core\Entity\EntityInterface $entity) {
     ->fields(array(
       'updated' => REQUEST_TIME,
     ))
-    ->condition('type', $entity->entityType())
+    ->condition('type', $entity->getEntityTypeId())
     ->condition('id', $entity->id())
     ->execute();
 }
@@ -372,7 +372,7 @@ function hook_entity_predelete(Drupal\Core\Entity\EntityInterface $entity) {
   // Count references to this entity in a custom table before they are removed
   // upon entity deletion.
   $id = $entity->id();
-  $type = $entity->entityType();
+  $type = $entity->getEntityTypeId();
   $count = db_select('example_entity_data')
     ->condition('type', $type)
     ->condition('id', $id)
@@ -400,7 +400,7 @@ function hook_entity_predelete(Drupal\Core\Entity\EntityInterface $entity) {
 function hook_entity_delete(Drupal\Core\Entity\EntityInterface $entity) {
   // Delete the entity's entry from a fictional table of all entities.
   db_delete('example_entity')
-    ->condition('type', $entity->entityType())
+    ->condition('type', $entity->getEntityTypeId())
     ->condition('id', $entity->id())
     ->execute();
 }
@@ -554,7 +554,7 @@ function hook_entity_prepare_view($entity_type, array $entities, array $displays
  */
 function hook_entity_view_mode_alter(&$view_mode, Drupal\Core\Entity\EntityInterface $entity, $context) {
   // For nodes, change the view mode when it is teaser.
-  if ($entity->entityType() == 'node' && $view_mode == 'teaser') {
+  if ($entity->getEntityTypeId() == 'node' && $view_mode == 'teaser') {
     $view_mode = 'my_custom_view_mode';
   }
 }
@@ -699,10 +699,9 @@ function hook_entity_field_info_alter(&$info, $entity_type) {
  *   The entity on which the linked operations will be performed.
  */
 function hook_entity_operation_alter(array &$operations, \Drupal\Core\Entity\EntityInterface $entity) {
-  $uri = $entity->uri();
   $operations['translate'] = array(
     'title' => t('Translate'),
-    'href' => $uri['path'] . '/translate',
+    'href' => $entity->getSystemPath() . '/translate',
     'weight' => 50,
   );
 }
@@ -736,7 +735,7 @@ function hook_entity_field_access($operation, \Drupal\Core\Field\FieldDefinition
 }
 
 /**
- * Alters the default access behaviour for a given field.
+ * Alters the default access behavior for a given field.
  *
  * Use this hook to override access grants from another module. Note that the
  * original default access flag is masked under the ':default' key.

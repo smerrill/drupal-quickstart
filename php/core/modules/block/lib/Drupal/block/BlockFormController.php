@@ -319,6 +319,7 @@ class BlockFormController extends EntityFormController {
       'values' => &$form_state['values']['settings'],
       'errors' => $form_state['errors'],
     );
+
     // Call the plugin submit handler.
     $entity->getPlugin()->submitConfigurationForm($form, $settings);
 
@@ -343,19 +344,16 @@ class BlockFormController extends EntityFormController {
   /**
    * {@inheritdoc}
    */
-  public function delete(array $form, array &$form_state) {
-    parent::delete($form, $form_state);
-    $form_state['redirect_route'] = array(
-      'route_name' => 'block.admin_block_delete',
-      'route_parameters' => array(
-        'block' => $this->entity->id(),
-      ),
-    );
-    $query = $this->getRequest()->query;
-    if ($query->has('destination')) {
-      $form_state['redirect_route']['options']['query']['destination'] = $query->get('destination');
-      $query->remove('destination');
-    }
+  public function buildEntity(array $form, array &$form_state) {
+    $entity = parent::buildEntity($form, $form_state);
+
+    // visibility__active_tab is Form API state and not configuration.
+    // @todo Fix vertical tabs.
+    $visibility = $entity->get('visibility');
+    unset($visibility['visibility__active_tab']);
+    $entity->set('visibility', $visibility);
+
+    return $entity;
   }
 
   /**

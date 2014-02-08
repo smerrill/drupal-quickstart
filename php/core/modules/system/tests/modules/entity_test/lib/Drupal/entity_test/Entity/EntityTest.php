@@ -11,6 +11,8 @@ use Drupal\Core\Entity\ContentEntityBase;
 use Drupal\Core\Field\FieldDefinition;
 use Drupal\Core\Entity\EntityStorageControllerInterface;
 use Drupal\Core\Language\Language;
+use Drupal\user\EntityOwnerInterface;
+use Drupal\user\UserInterface;
 
 /**
  * Defines the test entity class.
@@ -44,7 +46,7 @@ use Drupal\Core\Language\Language;
  *   }
  * )
  */
-class EntityTest extends ContentEntityBase {
+class EntityTest extends ContentEntityBase implements EntityOwnerInterface {
 
   /**
    * The entity ID.
@@ -100,23 +102,7 @@ class EntityTest extends ContentEntityBase {
   public static function preCreate(EntityStorageControllerInterface $storage_controller, array &$values) {
     parent::preCreate($storage_controller, $values);
     if (empty($values['type'])) {
-      $values['type'] = $storage_controller->entityType();
-    }
-  }
-
-  /**
-   * Overrides Drupal\entity\Entity::label().
-   */
-  public function label() {
-    $info = $this->entityInfo();
-    if (!isset($langcode)) {
-      $langcode = $this->activeLangcode;
-    }
-    if ($info->getKey('laebl') == 'name') {
-      return $this->getTranslation($langcode)->name->value;
-    }
-    else {
-      return parent::label($langcode);
+      $values['type'] = $storage_controller->getEntityTypeId();
     }
   }
 
@@ -157,6 +143,36 @@ class EntityTest extends ContentEntityBase {
       ->setTranslatable(TRUE);
 
     return $fields;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getOwner() {
+    return $this->get('user_id')->entity;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getOwnerId() {
+    return $this->get('user_id')->target_id;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function setOwnerId($uid) {
+    $this->set('user_id', $uid);
+    return $this;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function setOwner(UserInterface $account) {
+    $this->set('user_id', $account->id());
+    return $this;
   }
 
 }

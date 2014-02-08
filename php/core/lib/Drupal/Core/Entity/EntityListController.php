@@ -25,18 +25,18 @@ class EntityListController extends EntityControllerBase implements EntityListCon
   protected $storage;
 
   /**
-   * The entity type name.
+   * The entity type ID.
    *
    * @var string
    */
-  protected $entityType;
+  protected $entityTypeId;
 
   /**
-   * The entity info array.
+   * Information about the entity type.
    *
    * @var \Drupal\Core\Entity\EntityTypeInterface
    */
-  protected $entityInfo;
+  protected $entityType;
 
   /**
    * {@inheritdoc}
@@ -57,9 +57,9 @@ class EntityListController extends EntityControllerBase implements EntityListCon
    *   The entity storage controller class.
    */
   public function __construct(EntityTypeInterface $entity_info, EntityStorageControllerInterface $storage) {
-    $this->entityType = $entity_info->id();
+    $this->entityTypeId = $entity_info->id();
     $this->storage = $storage;
-    $this->entityInfo = $entity_info;
+    $this->entityType = $entity_info;
   }
 
   /**
@@ -93,24 +93,18 @@ class EntityListController extends EntityControllerBase implements EntityListCon
    * {@inheritdoc}
    */
   public function getOperations(EntityInterface $entity) {
-    $uri = $entity->uri();
-
     $operations = array();
-    if ($entity->access('update')) {
+    if ($entity->access('update') && $entity->hasLinkTemplate('edit-form')) {
       $operations['edit'] = array(
         'title' => $this->t('Edit'),
-        'href' => $uri['path'] . '/edit',
-        'options' => $uri['options'],
         'weight' => 10,
-      );
+      ) + $entity->urlInfo('edit-form');
     }
-    if ($entity->access('delete')) {
+    if ($entity->access('delete') && $entity->hasLinkTemplate('delete-form')) {
       $operations['delete'] = array(
         'title' => $this->t('Delete'),
-        'href' => $uri['path'] . '/delete',
-        'options' => $uri['options'],
         'weight' => 100,
-      );
+      ) + $entity->urlInfo('delete-form');
     }
 
     return $operations;
@@ -160,7 +154,7 @@ class EntityListController extends EntityControllerBase implements EntityListCon
     // Retrieve and sort operations.
     $operations = $this->getOperations($entity);
     $this->moduleHandler()->alter('entity_operation', $operations, $entity);
-    uasort($operations, 'drupal_sort_weight');
+    uasort($operations, array('Drupal\Component\Utility\SortArray', 'sortByWeightElement'));
     $build = array(
       '#type' => 'operations',
       '#links' => $operations,
@@ -181,7 +175,7 @@ class EntityListController extends EntityControllerBase implements EntityListCon
       '#header' => $this->buildHeader(),
       '#title' => $this->getTitle(),
       '#rows' => array(),
-      '#empty' => $this->t('There is no @label yet.', array('@label' => $this->entityInfo->getLabel())),
+      '#empty' => $this->t('There is no @label yet.', array('@label' => $this->entityType->getLabel())),
     );
     foreach ($this->load() as $entity) {
       if ($row = $this->buildRow($entity)) {

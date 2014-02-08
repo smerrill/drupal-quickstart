@@ -344,7 +344,7 @@ function _field_filter_xss_display_allowed_tags() {
 function field_view_value(EntityInterface $entity, $field_name, $item, $display = array(), $langcode = NULL) {
   $output = array();
 
-  if ($field = field_info_field($entity->entityType(), $field_name)) {
+  if ($field = field_info_field($entity->getEntityTypeId(), $field_name)) {
     // Clone the entity since we are going to modify field values.
     $clone = clone $entity;
 
@@ -472,29 +472,6 @@ function field_view_field(ContentEntityInterface $entity, $field_name, $display_
 }
 
 /**
- * Extracts the bundle name from a bundle object.
- *
- * @param $entity_type
- *   The type of $entity; e.g., 'node' or 'user'.
- * @param $bundle
- *   The bundle object (or string if bundles for this entity type do not exist
- *   as standalone objects).
- *
- * @return
- *   The bundle name.
- */
-function field_extract_bundle($entity_type, $bundle) {
-  if (is_string($bundle)) {
-    return $bundle;
-  }
-
-  $info = \Drupal::entityManager()->getDefinition($entity_type);
-  if (is_object($bundle) && ($bundle_key = $info->getBundleKey('bundle')) && isset($bundle->{$bundle_key})) {
-    return $bundle->{$bundle_key};
-  }
-}
-
-/**
  * Implements hook_page_build().
  */
 function field_page_build(&$page) {
@@ -598,7 +575,7 @@ function template_preprocess_field(&$variables, $hook) {
   // formatters leave them within $element['#items'][$delta]['_attributes'] to
   // be rendered on the item wrappers provided by theme_field().
   foreach ($variables['items'] as $delta => $item) {
-    $variables['item_attributes'][$delta] = !empty($element['#items'][$delta]['_attributes']) ? new Attribute($element['#items'][$delta]['_attributes']) : clone($default_attributes);
+    $variables['item_attributes'][$delta] = !empty($element['#items'][$delta]->_attributes) ? new Attribute($element['#items'][$delta]->_attributes) : clone($default_attributes);
   }
 }
 

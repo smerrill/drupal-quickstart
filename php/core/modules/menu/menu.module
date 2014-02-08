@@ -93,6 +93,19 @@ function menu_menu() {
 }
 
 /**
+ * Implements hook_menu_link_defaults().
+ */
+function menu_menu_link_defaults() {
+  $links['menu.admin.overview'] = array(
+    'link_title' => 'Menus',
+    'description' => 'Add new menus to your site, edit existing menus, and rename and reorganize menu links.',
+    'route_name' => 'menu.overview_page',
+    'parent' => 'system.admin.structure',
+  );
+  return $links;
+}
+
+/**
  * Implements hook_entity_info().
  */
 function menu_entity_info(&$entity_info) {
@@ -102,11 +115,14 @@ function menu_entity_info(&$entity_info) {
     ->setFormClass('edit', 'Drupal\menu\MenuFormController')
     ->setFormClass('delete', 'Drupal\menu\Form\MenuDeleteForm')
     ->setListClass('Drupal\menu\MenuListController')
+    ->setLinkTemplate('add-form', 'menu.link_add')
+    ->setLinkTemplate('delete-form', 'menu.delete_menu')
     ->setLinkTemplate('edit-form', 'menu.menu_edit');
 
   $entity_info['menu_link']
     ->setFormClass('delete', 'Drupal\menu\Form\MenuLinkDeleteForm')
-    ->setFormClass('reset', 'Drupal\menu\Form\MenuLinkResetForm');
+    ->setFormClass('reset', 'Drupal\menu\Form\MenuLinkResetForm')
+    ->setLinkTemplate('delete-form', 'menu.link_delete');
 }
 
 /**
@@ -319,7 +335,7 @@ function menu_block_view_system_menu_block_alter(array &$build, BlockPluginInter
   $menu_name = $block->getDerivativeId();
   if (isset($menus[$menu_name]) && isset($build['content'])) {
     foreach (element_children($build['content']) as $key) {
-      $build['content']['#contextual_links']['menu'] = array(
+      $build['#contextual_links']['menu'] = array(
         'route_parameters' => array('menu' => $build['content'][$key]['#original_link']['menu_name']),
       );
     }

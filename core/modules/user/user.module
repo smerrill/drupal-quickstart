@@ -151,7 +151,10 @@ function user_entity_bundle_info() {
  */
 function user_uri($user) {
   return array(
-    'path' => 'user/' . $user->id(),
+    'route_name' => 'user.view',
+    'route_parameters' => array(
+      'user' => $user->id(),
+    ),
   );
 }
 
@@ -161,23 +164,23 @@ function user_uri($user) {
  * Called by Drupal\Core\Entity\EntityViewBuilderInterface::buildContent()
  * implementations.
  *
- * @param array $entities
+ * @param \Drupal\user\EntityOwnerInterface[] $entities
  *   The entities keyed by entity ID.
  */
 function user_attach_accounts(array $entities) {
   $uids = array();
   foreach ($entities as $entity) {
-    $uids[] = $entity->getAuthorId();
+    $uids[] = $entity->getOwnerId();
   }
   $uids = array_unique($uids);
   $accounts = user_load_multiple($uids);
   $anonymous = drupal_anonymous_user();
   foreach ($entities as $id => $entity) {
-    if (isset($accounts[$entity->getAuthorId()])) {
-      $entities[$id]->account = $accounts[$entity->getAuthorId()];
+    if (isset($accounts[$entity->getOwnerId()])) {
+      $entities[$id]->setOwner($accounts[$entity->getOwnerId()]);
     }
     else {
-      $entities[$id]->account = $anonymous;
+      $entities[$id]->setOwner($anonymous);
     }
   }
 }
@@ -443,16 +446,14 @@ function user_access($string, AccountInterface $account = NULL) {
  * @param $name
  *   A string containing a name of the user.
  *
- * @return
- *   Object with property 'name' (the user name), if the user is blocked;
- *   FALSE if the user is not blocked.
+ * @return bool
+ *   TRUE if the user is blocked, FALSE otherwise.
  */
 function user_is_blocked($name) {
-  return db_select('users')
-    ->fields('users', array('name'))
-    ->condition('name', db_like($name), 'LIKE')
+  return (bool) \Drupal::entityQuery('user')
+    ->condition('name', $name)
     ->condition('status', 0)
-    ->execute()->fetchObject();
+    ->execute();
 }
 
 /**
@@ -575,7 +576,7 @@ function user_format_name(AccountInterface $account) {
  * @see user_user_logout()
  */
 function user_template_preprocess_default_variables_alter(&$variables) {
-  global $user;
+  $user = \Drupal::currentUser();
 
   // If this function is called from the installer after Drupal has been
   // installed then $user will not be set.
@@ -587,7 +588,7 @@ function user_template_preprocess_default_variables_alter(&$variables) {
   // Remove password and session IDs, $form_state, since themes should not need nor see them.
   unset($variables['user']->pass, $variables['user']->sid, $variables['user']->ssid);
 
-  $variables['is_admin'] = user_access('access administration pages');
+  $variables['is_admin'] = $user->hasPermission('access administration pages');
   $variables['logged_in'] = $user->isAuthenticated();
 }
 
@@ -619,7 +620,7 @@ function template_preprocess_username(&$variables) {
     $name = drupal_substr($name, 0, 15) . '...';
   }
   $variables['name'] = check_plain($name);
-  $variables['profile_access'] = user_access('access user profiles');
+  $variables['profile_access'] = \Drupal::currentUser()->hasPermission('access user profiles');
 
   // Populate link path and attributes if appropriate.
   if ($variables['uid'] && $variables['profile_access']) {
@@ -790,6 +791,55 @@ function user_menu() {
 }
 
 /**
+ * Implements hook_menu_link_defaults().
+ */
+function user_menu_link_defaults() {
+  // Registration and login pages.
+  $links['user'] = array(
+    'link_title' => 'My account',
+    'weight' => -10,
+    'route_name' => 'user.page',
+    'menu_name' => 'account',
+  );
+
+  $links['user.logout'] = array(
+    'link_title' => 'Log out',
+    'route_name' => 'user.logout',
+    'weight' => 10,
+    'menu_name' => 'account',
+  );
+
+  // User listing pages.
+  $links['user.admin.people'] = array(
+    'link_title' => 'People',
+    'route_name' => 'user.admin_account',
+    'description' => 'Manage user accounts, roles, and permissions.',
+    'parent' => 'system.admin',
+    'weight' => 4,
+  );
+
+  // Administration pages.
+  $links['user.admin.config.people'] = array(
+   'link_title' => 'People',
+   'route_name' => 'user.admin_index',
+   'parent' => 'system.admin.config',
+   'description' => 'Configure user accounts.',
+   'position' => 'left',
+   'weight' => -20,
+  );
+
+  $links['user.admin.config.people.accounts'] = array(
+    'link_title' => 'Account settings',
+    'parent' => 'user.admin.config.people',
+    'description' => 'Configure default behavior of users, including registration requirements, e-mails, and fields.',
+    'weight' => -10,
+    'route_name' => 'user.account_settings',
+  );
+
+  return $links;
+}
+
+/**
  * Implements hook_menu_link_presave().
  */
 function user_menu_link_presave(MenuLink $menu_link) {
@@ -797,14 +847,8 @@ function user_menu_link_presave(MenuLink $menu_link) {
   // for authenticated users. Authenticated users should see "My account", but
   // anonymous users should not see it at all. Therefore, invoke
   // user_menu_link_load() to conditionally hide the link.
-  if ($menu_link->link_path == 'user' && $menu_link->module == 'system') {
+  if ($menu_link->machine_name == 'user' && $menu_link->module == 'system') {
     $menu_link->options['alter'] = TRUE;
-  }
-
-  // Force the Logout link to appear on the top-level of 'account' menu by
-  // default (i.e., unless it has been customized).
-  if ($menu_link->link_path == 'user/logout' && $menu_link->module == 'system' && empty($menu_link->customized)) {
-    $menu_link->plid = 0;
   }
 }
 
@@ -966,21 +1010,20 @@ function user_authenticate($name, $password) {
 function user_login_finalize(UserInterface $account) {
   global $user;
   $user = $account;
-  watchdog('user', 'Session opened for %name.', array('%name' => $user->getUsername()));
+  watchdog('user', 'Session opened for %name.', array('%name' => $account->getUsername()));
   // Update the user table timestamp noting user has logged in.
   // This is also used to invalidate one-time login links.
   $account->setLastLoginTime(REQUEST_TIME);
-  db_update('users')
-    ->fields(array('login' => $user->getLastLoginTime()))
-    ->condition('uid', $user->id())
-    ->execute();
+  \Drupal::entityManager()
+    ->getStorageController('user')
+    ->updateLastLoginTimestamp($account);
 
   // Regenerate the session ID to prevent against session fixation attacks.
   // This is called before hook_user in case one of those functions fails
   // or incorrectly does a redirect which would leave the old session in place.
   drupal_session_regenerate();
 
-  \Drupal::moduleHandler()->invokeAll('user_login', array($user));
+  \Drupal::moduleHandler()->invokeAll('user_login', array($account));
 }
 
 /**
@@ -1795,7 +1838,7 @@ function user_cookie_delete($cookie_name) {
  * Implements hook_file_download_access().
  */
 function user_file_download_access($field, EntityInterface $entity, File $file) {
-  if ($entity->entityType() == 'user') {
+  if ($entity->getEntityTypeId() == 'user') {
     return $entity->access('view');
   }
 }

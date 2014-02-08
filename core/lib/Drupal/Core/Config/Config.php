@@ -15,7 +15,7 @@ use Drupal\Core\TypedData\PrimitiveInterface;
 use Drupal\Core\TypedData\Type\FloatInterface;
 use Drupal\Core\TypedData\Type\IntegerInterface;
 use Drupal\Core\Language\Language;
-use Symfony\Component\EventDispatcher\EventDispatcher;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 
 /**
  * Defines the default configuration object.
@@ -37,7 +37,7 @@ class Config {
   /**
    * An event dispatcher instance to use for configuration events.
    *
-   * @var \Symfony\Component\EventDispatcher\EventDispatcher
+   * @var \Symfony\Component\EventDispatcher\EventDispatcherInterface
    */
   protected $eventDispatcher;
 
@@ -67,7 +67,14 @@ class Config {
    *
    * @var array
    */
-  protected $data;
+  protected $data = array();
+
+  /**
+   * The original data of the configuration object.
+   *
+   * @var array
+   */
+  protected $originalData;
 
   /**
    * The current runtime data.
@@ -101,13 +108,6 @@ class Config {
   protected $storage;
 
   /**
-   * Whether the configuration object has already been loaded.
-   *
-   * @var bool
-   */
-  protected $isLoaded = FALSE;
-
-  /**
    * The config schema wrapper object for this configuration object.
    *
    * @var \Drupal\Core\Config\Schema\Element
@@ -129,14 +129,14 @@ class Config {
    * @param \Drupal\Core\Config\StorageInterface $storage
    *   A storage controller object to use for reading and writing the
    *   configuration data.
-   * @param \Symfony\Component\EventDispatcher\EventDispatcher $event_dispatcher
+   * @param \Symfony\Component\EventDispatcher\EventDispatcherInterface $event_dispatcher
    *   An event dispatcher instance to use for configuration events.
    * @param \Drupal\Core\Config\TypedConfigManager $typed_config
    *   The typed configuration manager service.
    * @param \Drupal\Core\Language\Language $language
    *   The language object used to override configuration data.
    */
-  public function __construct($name, StorageInterface $storage, EventDispatcher $event_dispatcher, TypedConfigManager $typed_config, Language $language = NULL) {
+  public function __construct($name, StorageInterface $storage, EventDispatcherInterface $event_dispatcher, TypedConfigManager $typed_config, Language $language = NULL) {
     $this->name = $name;
     $this->storage = $storage;
     $this->eventDispatcher = $event_dispatcher;
@@ -154,12 +154,12 @@ class Config {
    *   The configuration object.
    */
   public function initWithData(array $data) {
-    $this->isLoaded = TRUE;
     $this->settingsOverrides = array();
     $this->languageOverrides = array();
     $this->moduleOverrides = array();
     $this->isNew = FALSE;
     $this->replaceData($data);
+    $this->originalData = $this->data;
     return $this;
   }
 
@@ -228,9 +228,6 @@ class Config {
    *   TRUE if this configuration object does not exist in storage.
    */
   public function isNew() {
-    if (!$this->isLoaded) {
-      $this->load();
-    }
     return $this->isNew;
   }
 
@@ -255,9 +252,6 @@ class Config {
    *   The data that was requested.
    */
   public function get($key = '') {
-    if (!$this->isLoaded) {
-      $this->load();
-    }
     if (!isset($this->overriddenData)) {
       $this->setOverriddenData();
     }
@@ -287,8 +281,6 @@ class Config {
    */
   public function setData(array $data) {
     $this->replaceData($data);
-    // A load would destroy the data just set (for example on import).
-    $this->isLoaded = TRUE;
     return $this;
   }
 
@@ -409,10 +401,6 @@ class Config {
    *   The configuration object.
    */
   public function set($key, $value) {
-    if (!$this->isLoaded) {
-      $this->load();
-    }
-
     // The dot/period is a reserved character; it may appear between keys, but
     // not within keys.
     $parts = explode('.', $key);
@@ -436,9 +424,6 @@ class Config {
    *   The configuration object.
    */
   public function clear($key) {
-    if (!$this->isLoaded) {
-      $this->load();
-    }
     $parts = explode('.', $key);
     if (count($parts) == 1) {
       unset($this->data[$key]);
@@ -447,27 +432,6 @@ class Config {
       NestedArray::unsetValue($this->data, $parts);
     }
     $this->resetOverriddenData();
-    return $this;
-  }
-
-  /**
-   * Loads configuration data into this object.
-   *
-   * @return \Drupal\Core\Config\Config
-   *   The configuration object.
-   */
-  public function load() {
-    $this->isLoaded = FALSE;
-    $data = $this->storage->read($this->name);
-    if ($data === FALSE) {
-      $this->isNew = TRUE;
-      $this->replaceData(array());
-    }
-    else {
-      $this->isNew = FALSE;
-      $this->replaceData($data);
-    }
-    $this->isLoaded = TRUE;
     return $this;
   }
 
@@ -491,12 +455,10 @@ class Config {
       }
     }
 
-    if (!$this->isLoaded) {
-      $this->load();
-    }
     $this->storage->write($this->name, $this->data);
     $this->isNew = FALSE;
     $this->notify('save');
+    $this->originalData = $this->data;
     return $this;
   }
 
@@ -513,6 +475,7 @@ class Config {
     $this->isNew = TRUE;
     $this->resetOverriddenData();
     $this->notify('delete');
+    $this->originalData = $this->data;
     return $this;
   }
 
@@ -546,9 +509,6 @@ class Config {
    *   The configuration object.
    */
   public function merge(array $data_to_merge) {
-    if (!$this->isLoaded) {
-      $this->load();
-    }
     // Preserve integer keys so that configuration keys are not changed.
     $this->replaceData(NestedArray::mergeDeepArray(array($this->data, $data_to_merge), TRUE));
     return $this;
@@ -581,6 +541,9 @@ class Config {
    *
    * @return mixed
    *   The value cast to the type indicated in the schema.
+   *
+   * @throws \Drupal\Core\Config\UnsupportedDataTypeConfigException
+   *   Exception on unsupported/undefined data type deducted.
    */
   protected function castValue($key, $value) {
     if ($value === NULL) {
@@ -611,14 +574,17 @@ class Config {
         }
       }
       catch (SchemaIncompleteException $e) {
-        // @todo throw an exception due to an incomplete schema. Only possible
-        //   once https://drupal.org/node/1910624 is complete.
+        // @todo throw an exception due to an incomplete schema.
+        // Fix as part of https://drupal.org/node/2183983.
       }
     }
     else {
-      // Any non-scalar value must be an array.
+      // Throw exception on any non-scalar or non-array value.
       if (!is_array($value)) {
-        $value = (array) $value;
+        throw new UnsupportedDataTypeConfigException(String::format('Invalid data type for config element @name:@key', array(
+          '@name' => $this->getName(),
+          '@key' => $key,
+        )));
       }
       // Recurse into any nested keys.
       foreach ($value as $nested_value_key => $nested_value) {
@@ -644,11 +610,54 @@ class Config {
    *   The raw data.
    */
   public function getRawData() {
-    if (!$this->isLoaded) {
-      $this->load();
-    }
     return $this->data;
   }
 
+  /**
+   * Gets original data from this configuration object.
+   *
+   * Original data is the data as it is immediately after loading from
+   * configuration storage before any changes. If this is a new configuration
+   * object it will be an empty array.
+   *
+   * @see \Drupal\Core\Config\Config::get()
+   *
+   * @param string $key
+   *   A string that maps to a key within the configuration data.
+   * @param bool $apply_overrides
+   *   Apply any overrides to the original data. Defaults to TRUE.
+   *
+   * @return mixed
+   *   The data that was requested.
+   */
+  public function getOriginal($key = '', $apply_overrides = TRUE) {
+    $original_data = $this->originalData;
+    if ($apply_overrides) {
+      // Apply overrides.
+      if (isset($this->languageOverrides) && is_array($this->languageOverrides)) {
+        $original_data = NestedArray::mergeDeepArray(array($original_data, $this->languageOverrides), TRUE);
+      }
+      if (isset($this->moduleOverrides) && is_array($this->moduleOverrides)) {
+        $original_data = NestedArray::mergeDeepArray(array($original_data, $this->moduleOverrides), TRUE);
+      }
+      if (isset($this->settingsOverrides) && is_array($this->settingsOverrides)) {
+        $original_data = NestedArray::mergeDeepArray(array($original_data, $this->settingsOverrides), TRUE);
+      }
+    }
+
+    if (empty($key)) {
+      return $original_data;
+    }
+    else {
+      $parts = explode('.', $key);
+      if (count($parts) == 1) {
+        return isset($original_data[$key]) ? $original_data[$key] : NULL;
+      }
+      else {
+        $value = NestedArray::getValue($original_data, $parts, $key_exists);
+        return $key_exists ? $value : NULL;
+      }
+    }
+  }
 }
 

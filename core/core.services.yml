@@ -93,11 +93,15 @@ services:
     arguments: ['@database', config_snapshot]
   config.storage.schema:
     class: Drupal\Core\Config\Schema\SchemaStorage
+    arguments: ['@config.storage']
   config.storage.installer:
     class: Drupal\Core\Config\InstallStorage
   config.typed:
     class: Drupal\Core\Config\TypedConfigManager
     arguments: ['@config.storage', '@config.storage.schema', '@cache.config']
+  cron:
+    class: Drupal\Core\Cron
+    arguments: ['@module_handler', '@lock', '@queue', '@state']
   database:
     class: Drupal\Core\Database\Connection
     factory_class: Drupal\Core\Database\Database
@@ -184,6 +188,9 @@ services:
   entity.manager:
     class: Drupal\Core\Entity\EntityManager
     arguments: ['@container.namespaces', '@service_container', '@module_handler', '@cache.cache', '@language_manager', '@string_translation']
+  entity.form_builder:
+    class: Drupal\Core\Entity\EntityFormBuilder
+    arguments: ['@entity.manager', '@form_builder']
   plugin.manager.field.field_type:
     class: Drupal\Core\Field\FieldTypePluginManager
     arguments: ['@container.namespaces', '@cache.field', '@language_manager', '@module_handler']
@@ -211,6 +218,8 @@ services:
   request:
     class: Symfony\Component\HttpFoundation\Request
     synthetic: true
+  request_stack:
+    class: Symfony\Component\HttpFoundation\RequestStack
   event_dispatcher:
     class: Symfony\Component\EventDispatcher\ContainerAwareEventDispatcher
     arguments: ['@service_container']
@@ -222,9 +231,13 @@ services:
     arguments: ['@controller_resolver', '@string_translation']
   http_kernel:
     class: Drupal\Core\HttpKernel
-    arguments: ['@event_dispatcher', '@service_container', '@controller_resolver']
+    arguments: ['@event_dispatcher', '@service_container', '@controller_resolver', '@request_stack']
   language_manager:
     class: Drupal\Core\Language\LanguageManager
+    arguments: ['@language.default']
+  language.default:
+    class: Drupal\Core\Language\LanguageDefault
+    arguments: ['%language.default_values%']
   string_translator.custom_strings:
     class: Drupal\Core\StringTranslation\Translator\CustomStrings
     arguments: ['@settings']
@@ -260,7 +273,9 @@ services:
       - [fromRequest, ['@request']]
   router.route_provider:
     class: Drupal\Core\Routing\RouteProvider
-    arguments: ['@database']
+    arguments: ['@database', '@router.builder']
+    tags:
+      - { name: event_subscriber }
   router.matcher.final_matcher:
     class: Drupal\Core\Routing\UrlMatcher
   router.matcher:
@@ -276,9 +291,7 @@ services:
       - [setContext, ['@?router.request_context']]
   link_generator:
     class: Drupal\Core\Utility\LinkGenerator
-    arguments: ['@url_generator', '@module_handler', '@language_manager']
-    calls:
-      - [setRequest, ['@?request']]
+    arguments: ['@url_generator', '@module_handler', '@path.alias_manager.cached']
   router.dynamic:
     class: Symfony\Cmf\Component\Routing\DynamicRouter
     arguments: ['@router.request_context', '@router.matcher', '@url_generator']
@@ -303,7 +316,12 @@ services:
     arguments: ['@database']
   router.builder:
     class: Drupal\Core\Routing\RouteBuilder
-    arguments: ['@router.dumper', '@lock', '@event_dispatcher', '@module_handler', '@controller_resolver']
+    arguments: ['@router.dumper', '@lock', '@event_dispatcher', '@module_handler', '@controller_resolver', '@state']
+  router.rebuild_subscriber:
+    class: Drupal\Core\EventSubscriber\RouterRebuildSubscriber
+    arguments: ['@router.builder']
+    tags:
+      - { name: event_subscriber }
   path.alias_manager.cached:
     class: Drupal\Core\CacheDecorator\AliasManagerCacheDecorator
     arguments: ['@path.alias_manager', '@cache.path']
@@ -327,8 +345,6 @@ services:
     class: Drupal\Core\ParamConverter\ParamConverterManager
     calls:
       - [setContainer, ['@service_container']]
-    tags:
-      - { name: route_enhancer }
   paramconverter_subscriber:
     class: Drupal\Core\EventSubscriber\ParamConverterSubscriber
     tags:
@@ -357,6 +373,12 @@ services:
   ajax_response_subscriber:
     class: Drupal\Core\EventSubscriber\AjaxResponseSubscriber
     tags:
+      - { name: event_subscriber }
+  route_enhancer.param_conversion:
+    class: Drupal\Core\Routing\Enhancer\ParamConversionEnhancer
+    arguments: ['@paramconverter_manager']
+    tags:
+      - { name: route_enhancer }
       - { name: event_subscriber }
   route_enhancer.authentication:
     class: Drupal\Core\Routing\Enhancer\AuthenticationEnhancer
@@ -395,13 +417,15 @@ services:
     arguments: ['@controller_resolver', '@string_translation', '@title_resolver']
   controller.ajax:
     class: Drupal\Core\Controller\AjaxController
-    arguments: ['@controller_resolver']
+    arguments: ['@controller_resolver', '@ajax_response_renderer']
   controller.entityform:
     class: Drupal\Core\Entity\HtmlEntityFormController
     arguments: ['@controller_resolver', '@service_container', '@entity.manager']
   controller.dialog:
     class: Drupal\Core\Controller\DialogController
     arguments: ['@controller_resolver', '@title_resolver']
+  ajax_response_renderer:
+    class: Drupal\Core\Ajax\AjaxResponseRenderer
   router_listener:
     class: Symfony\Component\HttpKernel\EventListener\RouterListener
     tags:
@@ -413,15 +437,17 @@ services:
     class: Drupal\Core\EventSubscriber\ViewSubscriber
     tags:
       - { name: event_subscriber }
-    arguments: ['@content_negotiation', '@title_resolver']
+    arguments: ['@content_negotiation', '@title_resolver', '@ajax_response_renderer']
   html_view_subscriber:
     class: Drupal\Core\EventSubscriber\HtmlViewSubscriber
     tags:
       - { name: event_subscriber }
-    arguments: ['@html_page_renderer']
+    arguments: ['@html_fragment_renderer', '@html_page_renderer']
+  html_fragment_renderer:
+    class: Drupal\Core\Page\DefaultHtmlFragmentRenderer
+    arguments: ['@language_manager']
   html_page_renderer:
     class: Drupal\Core\Page\DefaultHtmlPageRenderer
-    arguments: ['@language_manager']
   private_key:
     class: Drupal\Core\PrivateKey
     arguments: ['@state']
@@ -505,10 +531,6 @@ services:
     tags:
       - { name: event_subscriber }
     arguments: ['@module_handler']
-  config_global_override_subscriber:
-    class: Drupal\Core\EventSubscriber\ConfigGlobalOverrideSubscriber
-    tags:
-      - { name: event_subscriber }
   config_import_subscriber:
     class: Drupal\Core\EventSubscriber\ConfigImportSubscriber
     tags:
@@ -520,7 +542,7 @@ services:
     arguments: ['@config.storage', '@config.storage.snapshot']
   exception_controller:
     class: Drupal\Core\Controller\ExceptionController
-    arguments: ['@content_negotiation', '@string_translation', '@title_resolver', '@html_page_renderer']
+    arguments: ['@content_negotiation', '@string_translation', '@title_resolver', '@html_page_renderer', '@html_fragment_renderer']
     calls:
       - [setContainer, ['@service_container']]
   exception_listener:

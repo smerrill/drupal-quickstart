@@ -185,14 +185,14 @@ function hook_queue_info() {
 /**
  * Alter cron queue information before cron runs.
  *
- * Called by drupal_cron_run() to allow modules to alter cron queue settings
+ * Called by \Drupal\Core\Cron to allow modules to alter cron queue settings
  * before any jobs are processesed.
  *
  * @param array $queues
  *   An array of cron queue information.
  *
  * @see hook_queue_info()
- * @see drupal_cron_run()
+ * @see \Drupal\Core\Cron
  */
 function hook_queue_info_alter(&$queues) {
   // This site has many feeds so let's spend 90 seconds on each cron run
@@ -233,7 +233,7 @@ function hook_queue_info_alter(&$queues) {
  *  - "#post_render": array of callables taking $children and $element.
  *  - "#submit": array of callback functions taking $form and $form_state.
  *  - "#title_display": optional string indicating if and how #title should be
- *    displayed, see theme_form_element() and theme_form_element_label().
+ *    displayed, see the form-element template and theme_form_element_label().
  *
  * @see hook_element_info_alter()
  * @see system_element_info()
@@ -399,17 +399,18 @@ function hook_css_alter(&$css) {
 }
 
 /**
- * Alter the commands that are sent to the user through the Ajax framework.
+ * Alter the Ajax command data that is sent to the client.
  *
- * @param $commands
- *   An array of all commands that will be sent to the user.
+ * @param \Drupal\Core\Ajax\CommandInterface[] $data
+ *   An array of all the rendered commands that will be sent to the client.
  *
- * @see ajax_render()
+ * @see \Drupal\Core\Ajax\AjaxResponse::ajaxRender()
  */
-function hook_ajax_render_alter($commands) {
+function hook_ajax_render_alter(array &$data) {
   // Inject any new status messages into the content area.
   $status_messages = array('#theme' => 'status_messages');
-  $commands[] = ajax_command_prepend('#block-system-main .content', drupal_render($status_messages));
+  $command = new \Drupal\Core\Ajax\PrependCommand('#block-system-main .content', drupal_render($status_messages));
+  $data[] = $command->render();
 }
 
 /**
@@ -486,6 +487,72 @@ function hook_menu_get_item_alter(&$router_item, $path, $original_map) {
     // ...call a function that prepares something for this request.
     mymodule_prepare_something();
   }
+}
+
+/**
+ * Define links for menus.
+ *
+ * @return array
+ *   An array of default menu links. Each link has a key that is the machine
+ *   name, which must be unique. The corresponding array value is an
+ *   associative array that may contain the following key-value pairs:
+ *   - link_title: (required) The untranslated title of the menu item.
+ *   - description: The untranslated description of the link.
+ *   - route_name: (optional) The route name to be used to build the path.
+ *     Either a route_name or a link_path must be provided.
+ *   - route_parameters: (optional) The route parameters to build the path.
+ *   - link_path: (optional) If you have an external link use link_path instead
+ *     of providing a route_name.
+ *   - parent: (optional) The machine name of the link that is this link's menu
+ *     parent.
+ *   - weight: (optional) An integer that determines the relative position of
+ *     items in the menu; higher-weighted items sink. Defaults to 0. Menu items
+ *     with the same weight are ordered alphabetically.
+ *   - menu_name: (optional) The machine name of a menu to put the link in, if
+ *     not the default Tools menu.
+ *   - expanded: (optional) If set to TRUE, and if a menu link is provided for
+ *     this menu item (as a result of other properties), then the menu link is
+ *     always expanded, equivalent to its 'always expanded' checkbox being set
+ *     in the UI.
+ *   - type: (optional) A bitmask of flags describing properties of the menu
+ *     item. The following two bitmasks are provided as constants in menu.inc:
+ *     - MENU_NORMAL_ITEM: Normal menu items show up in the menu tree and can be
+ *       moved/hidden by the administrator.
+ *     - MENU_SUGGESTED_ITEM: Modules may "suggest" menu items that the
+ *       administrator may enable.
+ *     If the "type" element is omitted, MENU_NORMAL_ITEM is assumed.
+ *   - options: (optional) An array of options to be passed to l() when
+ *     generating a link from this menu item.
+ *
+ * @see hook_menu_link_defaults_alter()
+ */
+function hook_menu_link_defaults() {
+  $links['user'] = array(
+    'link_title' => 'My account',
+    'weight' => -10,
+    'route_name' => 'user.page',
+    'menu_name' => 'account',
+  );
+
+  $links['user.logout'] = array(
+    'link_title' => 'Log out',
+    'route_name' => 'user.logout',
+    'weight' => 10,
+    'menu_name' => 'account',
+  );
+
+  return $links;
+}
+
+/**
+ * Alter links for menus.
+ *
+ * @see hook_menu_link_defaults()
+ */
+function hook_menu_link_defaults_alter(&$links) {
+  // Change the weight and title of the user.logout link.
+  $links['user.logout']['weight'] = -10;
+  $links['user.logout']['link_title'] = t('Logout');
 }
 
 /**
@@ -1336,9 +1403,6 @@ function hook_theme($existing, $type, $theme, $path) {
     'forum_list' => array(
       'variables' => array('forums' => NULL, 'parents' => NULL, 'tid' => NULL),
     ),
-    'forum_topic_list' => array(
-      'variables' => array('tid' => NULL, 'topics' => NULL, 'sortby' => NULL, 'forum_per_page' => NULL),
-    ),
     'forum_icon' => array(
       'variables' => array('new_posts' => NULL, 'num_posts' => 0, 'comment_mode' => 0, 'sticky' => 0),
     ),
@@ -1563,9 +1627,10 @@ function hook_mail($key, &$message, $params) {
 
   // Node-based variable translation is only available if we have a node.
   if (isset($params['node'])) {
+    /** @var \Drupal\node\NodeInterface $node */
     $node = $params['node'];
     $variables += array(
-      '%uid' => $node->getAuthorId(),
+      '%uid' => $node->getOwnerId(),
       '%node_url' => url('node/' . $node->id(), array('absolute' => TRUE)),
       '%node_type' => node_get_type_label($node),
       '%title' => $node->getTitle(),
@@ -1971,10 +2036,6 @@ function hook_requirements($phase) {
  * tables and their related keys and indexes. A schema is defined by
  * hook_schema() which must live in your module's .install file.
  *
- * This hook is called at install and uninstall time, and in the latter case, it
- * cannot rely on the .module file being loaded or hooks being known. If the
- * .module file is needed, it may be loaded with drupal_load().
- *
  * The tables declared by this hook will be automatically created when the
  * module is installed, and removed when the module is uninstalled. This happens
  * before hook_install() is invoked, and after hook_uninstall() is invoked,
@@ -2192,22 +2253,24 @@ function hook_install() {
  * The numbers are composed of three parts:
  * - 1 digit for Drupal core compatibility.
  * - 1 digit for your module's major release version (e.g., is this the 8.x-1.*
- *   (1) or 8.x-2.* (2) series of your module?). This digit should be 0 for
- *   initial porting of your module to a new Drupal core API.
- * - 2 digits for sequential counting, starting with 00.
+ *   (1) or 8.x-2.* (2) series of your module).
+ * - 2 digits for sequential counting, starting with 01.
  *
  * Examples:
- * - mymodule_update_8000(): This is the required update for mymodule to run
- *   with Drupal core API 8.x when upgrading from Drupal core API 7.x.
  * - mymodule_update_8100(): This is the first update to get the database ready
  *   to run mymodule 8.x-1.*.
  * - mymodule_update_8200(): This is the first update to get the database ready
- *   to run mymodule 8.x-2.*. Users can directly update from 7.x-2.* to 8.x-2.*
- *   and they get all 80xx and 82xx updates, but not 81xx updates, because
- *   those reside in the 8.x-1.x branch only.
+ *   to run mymodule 8.x-2.*.
  *
- * A good rule of thumb is to remove updates older than two major releases of
- * Drupal. See hook_update_last_removed() to notify Drupal about the removals.
+ * As of Drupal 8.0, the database upgrade system no longer supports updating a
+ * database from an earlier major version of Drupal: update.php can be used to
+ * upgrade from 7.x-1.x to 7.x-2.x, or 8.x-1.x to 8.x-2.x, but not from 7.x to
+ * 8.x. Therefore, only update hooks numbered 8001 or later will run for
+ * Drupal 8. 8000 is reserved for the minimum core schema version and defining
+ * mymodule_update_8000() will result in an exception. Use the
+ * @link https://drupal.org/node/2127611 Migration API @endlink instead to
+ * migrate data from an earlier major version of Drupal.
+ *
  * For further information about releases and release numbers see:
  * @link http://drupal.org/node/711070 Maintaining a drupal.org project with Git @endlink
  *
@@ -2332,21 +2395,21 @@ function hook_update_N(&$sandbox) {
  * @see hook_update_N()
  */
 function hook_update_dependencies() {
-  // Indicate that the mymodule_update_8000() function provided by this module
-  // must run after the another_module_update_8002() function provided by the
-  // 'another_module' module.
-  $dependencies['mymodule'][8000] = array(
-    'another_module' => 8002,
-  );
   // Indicate that the mymodule_update_8001() function provided by this module
-  // must run before the yet_another_module_update_8004() function provided by
+  // must run after the another_module_update_8003() function provided by the
+  // 'another_module' module.
+  $dependencies['mymodule'][8001] = array(
+    'another_module' => 8003,
+  );
+  // Indicate that the mymodule_update_8002() function provided by this module
+  // must run before the yet_another_module_update_8005() function provided by
   // the 'yet_another_module' module. (Note that declaring dependencies in this
   // direction should be done only in rare situations, since it can lead to the
   // following problem: If a site has already run the yet_another_module
   // module's database updates before it updates its codebase to pick up the
   // newest mymodule code, then the dependency declared here will be ignored.)
-  $dependencies['yet_another_module'][8004] = array(
-    'mymodule' => 8001,
+  $dependencies['yet_another_module'][8005] = array(
+    'mymodule' => 8002,
   );
   return $dependencies;
 }
@@ -2368,9 +2431,9 @@ function hook_update_dependencies() {
  * @see hook_update_N()
  */
 function hook_update_last_removed() {
-  // We've removed the 5.x-1.x version of mymodule, including database updates.
-  // The next update function is mymodule_update_5200().
-  return 5103;
+  // We've removed the 8.x-1.x version of mymodule, including database updates.
+  // The next update function is mymodule_update_8200().
+  return 8103;
 }
 
 /**
@@ -2387,14 +2450,6 @@ function hook_update_last_removed() {
  * will fire when the module gets uninstalled but before the module's database
  * tables are removed, allowing your module to query its own tables during
  * this routine.
- *
- * When hook_uninstall() is called, your module will already be disabled, so
- * its .module file will not be automatically included. If you need to call API
- * functions from your .module file in this hook, use drupal_load() to make
- * them available. (Keep this usage to a minimum, though, especially when
- * calling API functions that invoke hooks, or API functions from modules
- * listed as dependencies, since these may not be available or work as expected
- * when the module is disabled.)
  *
  * @see hook_install()
  * @see hook_schema()
@@ -2746,6 +2801,7 @@ function hook_tokens($type, $tokens, array $data = array(), array $options = arr
   $replacements = array();
 
   if ($type == 'node' && !empty($data['node'])) {
+    /** @var \Drupal\node\NodeInterface $node */
     $node = $data['node'];
 
     foreach ($tokens as $name => $original) {
@@ -2765,7 +2821,7 @@ function hook_tokens($type, $tokens, array $data = array(), array $options = arr
 
         // Default values for the chained tokens handled below.
         case 'author':
-          $account = $node->getAuthor() ? $node->getAuthor() : user_load(0);
+          $account = $node->getOwner() ? $node->getOwner() : user_load(0);
           $replacements[$original] = $sanitize ? check_plain($account->label()) : $account->label();
           break;
 
@@ -2776,7 +2832,7 @@ function hook_tokens($type, $tokens, array $data = array(), array $options = arr
     }
 
     if ($author_tokens = $token_service->findWithPrefix($tokens, 'author')) {
-      $replacements += $token_service->generate('user', $author_tokens, array('user' => $node->getAuthor()), $options);
+      $replacements += $token_service->generate('user', $author_tokens, array('user' => $node->getOwner()), $options);
     }
 
     if ($created_tokens = $token_service->findWithPrefix($tokens, 'created')) {
@@ -3166,10 +3222,10 @@ function hook_link_alter(&$variables) {
  * API function including the module's name.
  *
  * Examples:
- * - _update_7000_mymodule_save(): This function performs a save operation
- *   without invoking any hooks using the 7.x schema.
- * - _update_8000_mymodule_save(): This function performs the same save
- *   operation using the 8.x schema.
+ * - _update_8001_mymodule_save(): This function performs a save operation
+ *   without invoking any hooks using the original 8.x schema.
+ * - _update_8002_mymodule_save(): This function performs the same save
+ *   operation using an updated 8.x schema.
  *
  * The utility function should not invoke any hooks, and should perform database
  * operations using functions from the
@@ -3178,69 +3234,69 @@ function hook_link_alter(&$variables) {
  *
  * If a change to the schema necessitates a change to the utility function, a
  * new function should be created with a name based on the version of the schema
- * it acts on. See _update_8000_bar_get_types() and _update_8001_bar_get_types()
+ * it acts on. See _update_8002_bar_get_types() and _update_8003_bar_get_types()
  * in the code examples that follow.
  *
  * For example, foo.install could contain:
  * @code
  * function foo_update_dependencies() {
- *   // foo_update_8010() needs to run after bar_update_8000().
+ *   // foo_update_8010() needs to run after bar_update_8002().
  *   $dependencies['foo'][8010] = array(
- *     'bar' => 8000,
+ *     'bar' => 8002,
  *   );
  *
- *   // foo_update_8036() needs to run after bar_update_8001().
+ *   // foo_update_8036() needs to run after bar_update_8003().
  *   $dependencies['foo'][8036] = array(
- *     'bar' => 8001,
+ *     'bar' => 8003,
  *   );
  *
  *   return $dependencies;
  * }
  *
- * function foo_update_8000() {
+ * function foo_update_8002() {
  *   // No updates have been run on the {bar_types} table yet, so this needs
- *   // to work with the 7.x schema.
- *   foreach (_update_7000_bar_get_types() as $type) {
+ *   // to work with the original 8.x schema.
+ *   foreach (_update_8001_bar_get_types() as $type) {
  *     // Rename a variable.
  *   }
  * }
  *
  * function foo_update_8010() {
- *    // Since foo_update_8010() is going to run after bar_update_8000(), it
+ *    // Since foo_update_8010() is going to run after bar_update_8002(), it
  *    // needs to operate on the new schema, not the old one.
- *    foreach (_update_8000_bar_get_types() as $type) {
+ *    foreach (_update_8002_bar_get_types() as $type) {
  *      // Rename a different variable.
  *    }
  * }
  *
  * function foo_update_8036() {
- *   // This update will run after bar_update_8001().
- *   foreach (_update_8001_bar_get_types() as $type) {
+ *   // This update will run after bar_update_8003().
+ *   foreach (_update_8003_bar_get_types() as $type) {
  *   }
  * }
  * @endcode
  *
  * And bar.install could contain:
  * @code
- * function bar_update_8000() {
+ * function bar_update_8002() {
  *   // Type and bundle are confusing, so we renamed the table.
  *   db_rename_table('bar_types', 'bar_bundles');
  * }
  *
- * function bar_update_8001() {
+ * function bar_update_8003() {
  *   // Database table names should be singular when possible.
  *   db_rename_table('bar_bundles', 'bar_bundle');
  * }
  *
- * function _update_7000_bar_get_types() {
+ * function _update_8001_bar_get_types() {
  *   db_query('SELECT * FROM {bar_types}')->fetchAll();
  * }
  *
- * function _update_8000_bar_get_types() {
+ * function _update_8002_bar_get_types() {
  *   db_query('SELECT * FROM {bar_bundles'})->fetchAll();
  * }
  *
- * function _update_8001_bar_get_types() {
+ * function _update_8003_bar_get_types() {
  *   db_query('SELECT * FROM {bar_bundle}')->fetchAll();
  * }
  * @endcode

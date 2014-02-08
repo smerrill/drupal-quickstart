@@ -8,6 +8,7 @@
 namespace Drupal\node\Entity;
 
 use Drupal\Component\Utility\NestedArray;
+use Drupal\Core\Cache\Cache;
 use Drupal\Core\Config\Entity\ConfigEntityBase;
 use Drupal\Core\Entity\EntityStorageControllerInterface;
 use Drupal\node\NodeTypeInterface;
@@ -37,7 +38,9 @@ use Drupal\node\NodeTypeInterface;
  *     "uuid" = "uuid"
  *   },
  *   links = {
- *     "edit-form" = "node.type_edit"
+ *     "add-form" = "node.add",
+ *     "edit-form" = "node.type_edit",
+ *     "delete-form" = "node.type_delete_confirm"
  *   }
  * )
  */
@@ -164,7 +167,7 @@ class NodeType extends ConfigEntityBase implements NodeTypeInterface {
 
     if (!$update) {
       // Clear the node type cache, so the new type appears.
-      \Drupal::cache()->deleteTags(array('node_types' => TRUE));
+      Cache::deleteTags(array('node_types' => TRUE));
 
       entity_invoke_bundle_hook('create', 'node', $this->id());
 
@@ -177,7 +180,7 @@ class NodeType extends ConfigEntityBase implements NodeTypeInterface {
     }
     elseif ($this->getOriginalId() != $this->id()) {
       // Clear the node type cache to reflect the rename.
-      \Drupal::cache()->deleteTags(array('node_types' => TRUE));
+      Cache::deleteTags(array('node_types' => TRUE));
 
       $update_count = node_type_update_nodes($this->getOriginalId(), $this->id());
       if ($update_count) {
@@ -193,7 +196,7 @@ class NodeType extends ConfigEntityBase implements NodeTypeInterface {
     }
     else {
       // Invalidate the cache tag of the updated node type only.
-      cache()->invalidateTags(array('node_type' => $this->id()));
+      Cache::invalidateTags(array('node_type' => $this->id()));
     }
   }
 

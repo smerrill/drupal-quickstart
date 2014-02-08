@@ -105,6 +105,8 @@ class ThemeHandlerTest extends UnitTestCase {
       ->disableOriginalConstructor()
       ->getMock();
     $this->themeHandler = new TestThemeHandler($this->configFactory, $this->moduleHandler, $this->cacheBackend, $this->infoParser, $this->configInstaller, $this->routeBuilder, $this->systemListingInfo);
+
+    $this->getContainerWithCacheBins($this->cacheBackend);
   }
 
   /**

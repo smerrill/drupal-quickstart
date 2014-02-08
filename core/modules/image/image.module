@@ -6,7 +6,7 @@
  */
 
 use Drupal\Core\Entity\EntityInterface;
-use Drupal\Component\Plugin\Exception\UnknownPluginException;
+use Drupal\Component\Plugin\Exception\PluginNotFoundException;
 use Drupal\field\Entity\Field;
 use Drupal\field\Entity\FieldInstance;
 use Drupal\file\Entity\File;
@@ -76,7 +76,7 @@ function image_help($path, $arg) {
       try {
         $effect = entity_load('image_style', $arg[5])->getEffect($arg[7]);
       }
-      catch (UnknownPluginException $e) {
+      catch (PluginNotFoundException $e) {
         return NULL;
       }
       $effect_definition = $effect->getPluginDefinition();
@@ -117,6 +117,20 @@ function image_menu() {
   );
 
   return $items;
+}
+
+/**
+ * Implements hook_menu_link_defaults().
+ */
+function image_menu_link_defaults() {
+  $links['image.admin.media.image-styles'] = array(
+    'link_title' => 'Image styles',
+    'description' => 'Configure styles that can be used for resizing or adjusting images on display.',
+    'parent' => 'system.admin.config.media',
+    'route_name' => 'image.style_list',
+  );
+
+  return $links;
 }
 
 /**
@@ -185,7 +199,7 @@ function image_theme() {
       'file' => 'image.field.inc',
     ),
     'image_formatter' => array(
-      'variables' => array('item' => NULL, 'path' => NULL, 'image_style' => NULL),
+      'variables' => array('item' => NULL, 'item_attributes' => NULL, 'path' => NULL, 'image_style' => NULL),
       'file' => 'image.field.inc',
     ),
   );

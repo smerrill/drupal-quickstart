@@ -72,17 +72,17 @@ interface EntityInterface extends AccessibleInterface {
   /**
    * Returns the type of the entity.
    *
-   * @return
-   *   The type of the entity.
+   * @return string
+   *   The entity type ID.
    */
-  public function entityType();
+  public function getEntityTypeId();
 
   /**
    * Returns the bundle of the entity.
    *
    * @return
-   *   The bundle of the entity. Defaults to the entity type if the entity type
-   *   does not make use of different bundles.
+   *   The bundle of the entity. Defaults to the entity type ID if the entity
+   *   type does not make use of different bundles.
    */
   public function bundle();
 
@@ -97,11 +97,71 @@ interface EntityInterface extends AccessibleInterface {
   /**
    * Returns the URI elements of the entity.
    *
+   * URI templates might be set in the links array in an annotation, for
+   * example:
+   * @code
+   * links = {
+   *   "canonical" = "node.view",
+   *   "edit-form" = "node.page_edit",
+   *   "version-history" = "node.revision_overview"
+   * }
+   * @endcode
+   * or specified in a callback function set like:
+   * @code
+   * uri_callback = "comment_uri",
+   * @endcode
+   * If the path is not set in the links array, the uri_callback function is
+   * used for setting the path. If this does not exist and the link relationship
+   * type is canonical, the path is set using the default template:
+   * entity/entityType/id.
+   *
+   * @param string $rel
+   *   The link relationship type, for example: canonical or edit-form.
+   *
    * @return
    *   An array containing the 'path' and 'options' keys used to build the URI
    *   of the entity, and matching the signature of url().
    */
-  public function uri();
+  public function urlInfo($rel = 'canonical');
+
+  /**
+   * Returns the public URL for this entity.
+   *
+   * @param string $rel
+   *   The link relationship type, for example: canonical or edit-form.
+   * @param array $options
+   *   See \Drupal\Core\Routing\UrlGeneratorInterface::generateFromRoute() for
+   *   the available options.
+   *
+   * @return string
+   *   The URL for this entity.
+   */
+  public function url($rel = 'canonical', $options = array());
+
+  /**
+   * Returns the internal path for this entity.
+   *
+   * self::url() will return the full path including any prefixes, fragments, or
+   * query strings. This path does not include those.
+   *
+   * @param string $rel
+   *   The link relationship type, for example: canonical or edit-form.
+   *
+   * @return string
+   *   The internal path for this entity.
+   */
+  public function getSystemPath($rel = 'canonical');
+
+  /**
+   * Indicates if a link template exists for a given key.
+   *
+   * @param string $key
+   *   The link type.
+   *
+   * @return bool
+   *   TRUE if the link template exists, FALSE otherwise.
+   */
+  public function hasLinkTemplate($key);
 
   /**
    * Returns a list of URI relationships supported by this entity.
@@ -221,11 +281,12 @@ interface EntityInterface extends AccessibleInterface {
   public function createDuplicate();
 
   /**
-   * Returns the info of the type of the entity.
+   * Returns the entity type definition.
    *
    * @return \Drupal\Core\Entity\EntityTypeInterface
+   *   Entity type definition.
    */
-  public function entityInfo();
+  public function getEntityType();
 
   /**
    * Returns a list of entities referenced by this entity.
@@ -234,10 +295,5 @@ interface EntityInterface extends AccessibleInterface {
    *   An array of entities.
    */
   public function referencedEntities();
-
-  /**
-   * Acts on an entity after it was saved or deleted.
-   */
-  public function changed();
 
 }

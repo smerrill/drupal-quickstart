@@ -88,24 +88,14 @@ function install_drupal($settings = array()) {
   // installation.
   $interactive = empty($settings);
   $install_state = $settings + array('interactive' => $interactive) + install_state_defaults();
-  try {
-    // Begin the page request. This adds information about the current state of
-    // the Drupal installation to the passed-in array.
-    install_begin_request($install_state);
-    // Based on the installation state, run the remaining tasks for this page
-    // request, and collect any output.
-    $output = install_run_tasks($install_state);
-  }
-  catch (Exception $e) {
-    // When an installation error occurs, either send the error to the web
-    // browser or pass on the exception so the calling script can use it.
-    if ($install_state['interactive']) {
-      install_display_output($e->getMessage(), $install_state);
-    }
-    else {
-      throw $e;
-    }
-  }
+
+  // Begin the page request. This adds information about the current state of
+  // the Drupal installation to the passed-in array.
+  install_begin_request($install_state);
+  // Based on the installation state, run the remaining tasks for this page
+  // request, and collect any output.
+  $output = install_run_tasks($install_state);
+
   // After execution, all tasks might be complete, in which case
   // $install_state['installation_finished'] is TRUE. In case the last task
   // has been processed, remove the global $install_state, so other code can
@@ -186,8 +176,6 @@ function install_state_defaults() {
     // Whether or not this installation is interactive. By default this will
     // be set to FALSE if settings are passed in to install_drupal().
     'interactive' => TRUE,
-    // The mode for directories that are created during install.
-    'mode' => NULL,
     // An array of parameters for the installation, pre-populated by the URL
     // or by the settings passed in to install_drupal(). This is primarily
     // used to store 'profile' (the name of the chosen installation profile)
@@ -301,23 +289,8 @@ function install_begin_request(&$install_state) {
     exit;
   }
 
-  // Register the 'language_manager' service.
-  $container->register('language_manager', 'Drupal\Core\Language\LanguageManager');
-
-  // If we have a language selected and it is not yet saved in the system
-  // (eg. pre-database data screens we are unable to persistently store
-  // the default language), we should set language_default so the proper
-  // language is used to display installer pages as early as possible.
-  // The language list is stored in configuration and cannot be saved either
-  // until later in the process. Language negotiation bootstrapping needs
-  // the new default language to be in the list though, so inject it in.
-  if (!empty($install_state['parameters']['langcode']) && language_default()->id != $install_state['parameters']['langcode']) {
-    $GLOBALS['conf']['language_default'] = array('id' => $install_state['parameters']['langcode']);
-
-    $languages = &drupal_static('language_list');
-    $languages[$install_state['parameters']['langcode']] = new Language($GLOBALS['conf']['language_default']);
-  }
-
+  // Ensure that procedural dependencies are loaded as early as possible,
+  // since the error/exception handlers depend on them.
   require_once __DIR__ . '/../modules/system/system.install';
   require_once __DIR__ . '/common.inc';
   require_once __DIR__ . '/file.inc';
@@ -334,6 +307,21 @@ function install_begin_request(&$install_state) {
   include_once __DIR__ . '/module.inc';
   include_once __DIR__ . '/session.inc';
   require_once __DIR__ . '/entity.inc';
+
+  // If we have a language selected and it is not yet saved in the system (eg.
+  // pre-database data screens we are unable to persistently store the default
+  // language), we should set language_default so the proper language is used to
+  // display installer pages as early as possible.
+  $default_language_values = Language::$defaultValues;
+  if (!empty($install_state['parameters']['langcode']) && $default_language_values['id'] != $install_state['parameters']['langcode']) {
+    $default_language_values = array('id' => $install_state['parameters']['langcode']);
+  }
+  // Register the 'language_manager' service.
+  $container->setParameter('language.default_values', $default_language_values);
+  $container->register('language.default', 'Drupal\Core\Language\LanguageDefault')
+    ->addArgument('%language.default_values%');
+  $container->register('language_manager', 'Drupal\Core\Language\LanguageManager')
+    ->addArgument(new Reference('language.default'));
 
   // Register the translation services.
   install_register_translation_service($container);
@@ -378,12 +366,17 @@ function install_begin_request(&$install_state) {
 
     $container->register('config.storage', 'Drupal\Core\Config\InstallStorage');
 
-    $container->register('config.storage.schema', 'Drupal\Core\Config\Schema\SchemaStorage');
+    $container->register('config.storage.schema', 'Drupal\Core\Config\Schema\SchemaStorage')
+      ->addArgument(new Reference('config.storage'));
 
     $container->register('config.typed', 'Drupal\Core\Config\TypedConfigManager')
       ->addArgument(new Reference('config.storage'))
       ->addArgument(new Reference('config.storage.schema'))
       ->addArgument(new Reference('cache.config'));
+
+    $container->setParameter('language.default_values', Language::$defaultValues);
+    $container->register('language.default', 'Drupal\Core\Language\LanguageDefault')
+      ->addArgument('%language.default_values%');
 
     $container->register('config.factory', 'Drupal\Core\Config\ConfigFactory')
       ->addArgument(new Reference('config.storage'))
@@ -391,7 +384,8 @@ function install_begin_request(&$install_state) {
       ->addArgument(new Reference('config.typed'));
 
     // Register the 'language_manager' service.
-    $container->register('language_manager', 'Drupal\Core\Language\LanguageManager');
+    $container->register('language_manager', 'Drupal\Core\Language\LanguageManager')
+      ->addArgument(new Reference('language.default'));
 
     // Register the translation services.
     install_register_translation_service($container);
@@ -476,6 +470,12 @@ function install_begin_request(&$install_state) {
       ->addArgument(new Reference('module_handler'))
       ->addArgument(new Reference('cache.cache'))
       ->addArgument(new Reference('info_parser'));
+
+    // Overrides can not work at this point since this would cause the
+    // ConfigFactory to try to load language override configuration which is not
+    // supported by \Drupal\Core\Config\InstallStorage since loading a
+    // non-existing file would throw an exception.
+    $container->get('config.factory')->setOverrideState(FALSE);
   }
 
   // Set the request in the kernel to the new created Request above
@@ -955,6 +955,11 @@ function install_full_redirect_url($install_state) {
  *   An array of information about the current installation state.
  */
 function install_display_output($output, $install_state) {
+  // Ensure the maintenance theme is initialized.
+  // The regular initialization call in install_begin_request() may not be
+  // reached in case of an early installer error.
+  drupal_maintenance_theme();
+
   drupal_page_header();
 
   // Prevent install.php from being indexed when installed in a sub folder.
@@ -978,9 +983,16 @@ function install_display_output($output, $install_state) {
     // Let the theming function know when every step of the installation has
     // been completed.
     $active_task = $install_state['installation_finished'] ? NULL : $install_state['active_task'];
-    drupal_add_region_content('sidebar_first', theme('task_list', array('items' => install_tasks_to_display($install_state), 'active' => $active_task, 'variant' => 'install')));
+    $task_list = array(
+      '#theme' => 'task_list',
+      '#items' => install_tasks_to_display($install_state),
+      '#active' => $active_task,
+      '#variant' => 'install',
+    );
+    drupal_add_region_content('sidebar_first', drupal_render($task_list));
   }
-  print theme('install_page', array('content' => $output));
+  $install_page = array('#theme' => 'install_page', '#content' => $output);
+  print drupal_render($install_page);
   exit;
 }
 
@@ -1011,7 +1023,7 @@ function install_verify_requirements(&$install_state) {
  */
 function install_base_system(&$install_state) {
   // Install system.module.
-  drupal_install_system();
+  drupal_install_system($install_state);
 
   // Call file_ensure_htaccess() to ensure that all of Drupal's standard
   // directories (e.g., the public files directory and config directory) have
@@ -1166,13 +1178,6 @@ function install_settings_form_validate($form, &$form_state) {
   $database['namespace'] = substr($install_namespace, 0, strrpos($install_namespace, '\\'));
   $database['driver'] = $driver;
 
-  // @todo PIFR uses 'db_prefix' instead of 'prefix'. Remove this when it gets
-  //   fixed.
-  if (!$test_prefix) {
-    $database['prefix'] = $database['db_prefix'];
-  }
-  unset($database['db_prefix']);
-
   $form_state['storage']['database'] = $database;
   $errors = install_database_errors($database, $form_state['values']['settings_file']);
   foreach ($errors as $name => $message) {
@@ -1227,7 +1232,7 @@ function install_database_errors($database, $settings_file) {
  * @see install_settings_form_validate()
  */
 function install_settings_form_submit($form, &$form_state) {
-  global $install_state, $conf;
+  global $install_state;
 
   // Update global settings array and save.
   $settings = array();
@@ -1271,7 +1276,7 @@ function install_settings_form_submit($form, &$form_state) {
   drupal_rewrite_settings($settings);
 
   // Add the config directories to settings.php.
-  drupal_install_config_directories($install_state['mode']);
+  drupal_install_config_directories();
 
   // Indicate that the settings file has been verified, and check the database
   // for the last completed task, now that we have a valid connection. This
@@ -2181,7 +2186,7 @@ function install_finished(&$install_state) {
   // Run cron to populate update status tables (if available) so that users
   // will be warned if they've installed an out of date Drupal version.
   // Will also trigger indexing of profile-supplied content or feeds.
-  drupal_cron_run();
+  \Drupal::service('cron')->run();
 
   // Save a snapshot of the initially installed configuration.
   $active = \Drupal::service('config.storage');
@@ -2229,9 +2234,9 @@ function install_check_translations($install_state) {
   $online = FALSE;
 
   // First attempt to create or make writable the files directory.
-  file_prepare_directory($files_directory, FILE_CREATE_DIRECTORY | FILE_MODIFY_PERMISSIONS, $install_state['mode']);
+  file_prepare_directory($files_directory, FILE_CREATE_DIRECTORY | FILE_MODIFY_PERMISSIONS);
   // Then, attempt to create or make writable the translations directory.
-  file_prepare_directory($translations_directory, FILE_CREATE_DIRECTORY | FILE_MODIFY_PERMISSIONS, $install_state['mode']);
+  file_prepare_directory($translations_directory, FILE_CREATE_DIRECTORY | FILE_MODIFY_PERMISSIONS);
 
   // Get values so the requirements errors can be specific.
   if (drupal_verify_install_file($translations_directory, FILE_EXIST|FILE_WRITABLE, 'dir')) {
@@ -2528,7 +2533,11 @@ function install_display_requirements($install_state, $requirements) {
   if ($severity == REQUIREMENT_ERROR || ($severity == REQUIREMENT_WARNING && empty($install_state['parameters']['continue']))) {
     if ($install_state['interactive']) {
       drupal_set_title(t('Requirements problem'));
-      $status_report = theme('status_report', array('requirements' => $requirements));
+      $status_report = array(
+        '#theme' => 'status_report',
+        '#requirements' => $requirements,
+      );
+      $status_report = drupal_render($status_report);
       $status_report .= t('Check the messages and <a href="!url">try again</a>.', array('!url' => check_url(drupal_requirements_url($severity))));
       return $status_report;
     }
@@ -2688,7 +2697,6 @@ function install_configure_form_submit($form, &$form_state) {
   \Drupal::config('system.site')
     ->set('name', $form_state['values']['site_name'])
     ->set('mail', $form_state['values']['site_mail'])
-    ->set('langcode', language_default()->id)
     ->save();
 
   \Drupal::config('system.date')

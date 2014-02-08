@@ -18,6 +18,7 @@ use Drupal\Core\Session\AccountInterface;
 use Drupal\Core\Session\UserSession;
 use Drupal\Core\StreamWrapper\PublicStream;
 use Drupal\Core\Datetime\DrupalDateTime;
+use Drupal\block\Entity\Block;
 use Symfony\Component\HttpFoundation\Request;
 
 /**
@@ -200,7 +201,7 @@ abstract class WebTestBase extends TestBase {
    * @param $reset
    *   (optional) Whether to reset the entity cache.
    *
-   * @return \Drupal\Core\Entity\EntityInterface
+   * @return \Drupal\node\NodeInterface
    *   A node entity matching $title.
    */
   function drupalGetNodeByTitle($title, $reset = FALSE) {
@@ -247,7 +248,7 @@ abstract class WebTestBase extends TestBase {
    *   - revision: 1. (Backwards-compatible binary flag indicating whether a
    *     new revision should be created; use 1 to specify a new revision.)
    *
-   * @return \Drupal\node\Entity\Node
+   * @return \Drupal\node\NodeInterface
    *   The created node entity.
    */
   protected function drupalCreateNode(array $settings = array()) {
@@ -383,6 +384,41 @@ abstract class WebTestBase extends TestBase {
     $block = entity_create('block', $values);
     $block->save();
     return $block;
+  }
+
+  /**
+   * Checks to see whether a block appears on the page.
+   *
+   * @param \Drupal\block\Entity\Block $block
+   *   The block entity to find on the page.
+   */
+  protected function assertBlockAppears(Block $block) {
+    $result = $this->findBlockInstance($block);
+    $this->assertTrue(!empty($result), format_string('Ensure the block @id appears on the page', array('@id' => $block->id())));
+  }
+
+  /**
+   * Checks to see whether a block does not appears on the page.
+   *
+   * @param \Drupal\block\Entity\Block $block
+   *   The block entity to find on the page.
+   */
+  protected function assertNoBlockAppears(Block $block) {
+    $result = $this->findBlockInstance($block);
+    $this->assertFalse(!empty($result), format_string('Ensure the block @id does not appear on the page', array('@id' => $block->id())));
+  }
+
+  /**
+   * Find a block instance on the page.
+   *
+   * @param \Drupal\block\Entity\Block $block
+   *   The block entity to find on the page.
+   *
+   * @return array
+   *   The result from the xpath query.
+   */
+  protected function findBlockInstance(Block $block) {
+    return $this->xpath('//div[@id = :id]', array(':id' => 'block-' . $block->id()));
   }
 
   /**
@@ -661,8 +697,9 @@ abstract class WebTestBase extends TestBase {
     if (!isset($account->session_id)) {
       return FALSE;
     }
-    // @see _drupal_session_read()
-    return (bool) db_query("SELECT sid FROM {users} u INNER JOIN {sessions} s ON u.uid = s.uid WHERE s.sid = :sid", array(':sid' => $account->session_id))->fetchField();
+    // @see _drupal_session_read(). The session ID is hashed before being stored
+    // in the database.
+    return (bool) db_query("SELECT sid FROM {users} u INNER JOIN {sessions} s ON u.uid = s.uid WHERE s.sid = :sid", array(':sid' => Crypt::hashBase64($account->session_id)))->fetchField();
   }
 
   /**
@@ -698,60 +735,25 @@ abstract class WebTestBase extends TestBase {
   /**
    * Sets up a Drupal site for running functional and integration tests.
    *
-   * Generates a random database prefix and installs Drupal with the specified
-   * installation profile in \Drupal\simpletest\WebTestBase::$profile into the
-   * prefixed database. Afterwards, installs any additional modules specified by
-   * the test.
+   * Installs Drupal with the installation profile specified in
+   * \Drupal\simpletest\WebTestBase::$profile into the prefixed database.
+
+   * Afterwards, installs any additional modules specified in the static
+   * \Drupal\simpletest\WebTestBase::$modules property of each class in the
+   * class hierarchy.
    *
    * After installation all caches are flushed and several configuration values
    * are reset to the values of the parent site executing the test, since the
    * default values may be incompatible with the environment in which tests are
    * being executed.
-   *
-   * @param ...
-   *   List of modules to enable for the duration of the test. This can be
-   *   either a single array or a variable number of string arguments.
-   *
-   * @see \Drupal\simpletest\WebTestBase::prepareDatabasePrefix()
-   * @see \Drupal\simpletest\WebTestBase::changeDatabasePrefix()
-   * @see \Drupal\simpletest\WebTestBase::prepareEnvironment()
    */
   protected function setUp() {
-    global $conf;
-
     // When running tests through the Simpletest UI (vs. on the command line),
     // Simpletest's batch conflicts with the installer's batch. Batch API does
     // not support the concept of nested batches (in which the nested is not
     // progressive), so we need to temporarily pretend there was no batch.
     // Backup the currently running Simpletest batch.
     $this->originalBatch = batch_get();
-
-    // Create the database prefix for this test.
-    $this->prepareDatabasePrefix();
-
-    // Prepare the environment for running tests.
-    $this->prepareEnvironment();
-    if (!$this->setupEnvironment) {
-      return FALSE;
-    }
-
-    // Reset all statics and variables to perform tests in a clean environment.
-    $conf = array();
-    drupal_static_reset();
-
-    // Change the database prefix.
-    // All static variables need to be reset before the database prefix is
-    // changed, since \Drupal\Core\Utility\CacheArray implementations attempt to
-    // write back to persistent caches when they are destructed.
-    $this->changeDatabasePrefix();
-    if (!$this->setupDatabasePrefix) {
-      return FALSE;
-    }
-
-    // Set the 'simpletest_parent_profile' variable to add the parent profile's
-    // search path to the child site's search paths.
-    // @see drupal_system_listing()
-    $conf['simpletest_parent_profile'] = $this->originalProfile;
 
     // Define information about the user 1 account.
     $this->root_user = new UserSession(array(
@@ -764,21 +766,12 @@ abstract class WebTestBase extends TestBase {
     // Reset the static batch to remove Simpletest's batch operations.
     $batch = &batch_get();
     $batch = array();
-    $variable_groups = array(
-      'system.file' => array(
-        'path.private' =>  $this->private_files_directory,
-        'path.temporary' =>  $this->temp_files_directory,
-      ),
-      'locale.settings' =>  array(
-        'translation.path' => $this->translation_files_directory,
-      ),
-    );
-    foreach ($variable_groups as $config_base => $variables) {
-      foreach ($variables as $name => $value) {
-        NestedArray::setValue($GLOBALS['conf'], array_merge(array($config_base), explode('.', $name)), $value);
-      }
-    }
+
     $this->settingsSet('file_public_path', $this->public_files_directory);
+    $GLOBALS['config']['system.file']['path']['private'] = $this->private_files_directory;
+    $GLOBALS['config']['system.file']['path']['temporary'] = $this->temp_files_directory;
+    $GLOBALS['config']['locale.settings']['translation']['path'] = $this->translation_files_directory;
+
     // Execute the non-interactive installer.
     require_once DRUPAL_ROOT . '/core/includes/install.core.inc';
     $this->settingsSet('cache', array('default' => 'cache.backend.memory'));
@@ -835,25 +828,23 @@ abstract class WebTestBase extends TestBase {
 
     // Now make sure that the file path configurations are saved. This is done
     // after we install the modules to override default values.
-    foreach ($variable_groups as $config_base => $variables) {
-      $config = \Drupal::config($config_base);
-      foreach ($variables as $name => $value) {
-        $config->set($name, $value);
-      }
-      $config->save();
-    }
+    \Drupal::config('system.file')
+      ->set('path.private', $this->private_files_directory)
+      ->set('path.temporary', $this->temp_files_directory)
+      ->save();
+    \Drupal::config('locale.settings')
+      ->set('translation.path', $this->translation_files_directory)
+      ->save();
 
     // Use the test mail class instead of the default mail handler class.
     \Drupal::config('system.mail')->set('interface.default', 'Drupal\Core\Mail\TestMailCollector')->save();
 
-    drupal_set_time_limit($this->timeLimit);
     // Temporary fix so that when running from run-tests.sh we don't get an
     // empty current path which would indicate we're on the home page.
     $path = current_path();
     if (empty($path)) {
       _current_path('run-tests');
     }
-    $this->setup = TRUE;
   }
 
   /**
@@ -864,6 +855,11 @@ abstract class WebTestBase extends TestBase {
    */
   protected function installParameters() {
     $connection_info = Database::getConnectionInfo();
+    $driver = $connection_info['default']['driver'];
+    unset($connection_info['default']['driver']);
+    unset($connection_info['default']['namespace']);
+    unset($connection_info['default']['pdo']);
+    unset($connection_info['default']['init_commands']);
     $parameters = array(
       'interactive' => FALSE,
       'parameters' => array(
@@ -871,7 +867,10 @@ abstract class WebTestBase extends TestBase {
         'langcode' => 'en',
       ),
       'forms' => array(
-        'install_settings_form' => $connection_info['default'],
+        'install_settings_form' => array(
+          'driver' => $driver,
+          $driver => $connection_info['default'],
+        ),
         'install_configure_form' => array(
           'site_name' => 'Drupal',
           'site_mail' => 'simpletest@example.com',
@@ -985,31 +984,28 @@ abstract class WebTestBase extends TestBase {
     drupal_flush_all_caches();
     $this->container = \Drupal::getContainer();
 
-    // Reload global $conf array and permissions.
+    // Reset static variables and reload permissions.
     $this->refreshVariables();
     $this->checkPermissions(array(), TRUE);
   }
 
   /**
-   * Refreshes the in-memory set of variables.
+   * Refreshes in-memory configuration and state information.
    *
-   * Useful after a page request is made that changes a variable in a different
-   * thread.
+   * Useful after a page request is made that changes configuration or state in
+   * a different thread.
    *
    * In other words calling a settings page with $this->drupalPostForm() with a
-   * changed value would update a variable to reflect that change, but in the
-   * thread that made the call (thread running the test) the changed variable
+   * changed value would update configuration to reflect that change, but in the
+   * thread that made the call (thread running the test) the changed values
    * would not be picked up.
    *
-   * This method clears the variables cache and loads a fresh copy from the
-   * database to ensure that the most up-to-date set of variables is loaded.
+   * This method clears the cache and loads a fresh copy.
    */
   protected function refreshVariables() {
-    global $conf;
-    cache('bootstrap')->delete('variables');
-    $conf = variable_initialize();
     // Clear the tag cache.
     drupal_static_reset('Drupal\Core\Cache\CacheBackendInterface::tagCache');
+
     \Drupal::service('config.factory')->reset();
     \Drupal::state()->resetCache();
   }
@@ -1698,7 +1694,8 @@ abstract class WebTestBase extends TestBase {
           }
           // @todo Ajax commands can target any jQuery selector, but these are
           //   hard to fully emulate with XPath. For now, just handle 'head'
-          //   and 'body', since these are used by ajax_render().
+          //   and 'body', since these are used by
+          //   \Drupal\Core\Ajax\AjaxResponse::ajaxRender().
           elseif (in_array($command['selector'], array('head', 'body'))) {
             $wrapperNode = $xpath->query('//' . $command['selector'])->item(0);
           }
@@ -2872,7 +2869,7 @@ abstract class WebTestBase extends TestBase {
    * Asserts themed output.
    *
    * @param $callback
-   *   The name of the theme function to invoke; e.g. 'links' for theme_links().
+   *   The name of the theme hook to invoke; e.g. 'links' for links.html.twig.
    * @param $variables
    *   An array of variables to pass to the theme function.
    * @param $expected

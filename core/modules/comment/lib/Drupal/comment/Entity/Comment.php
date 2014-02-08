@@ -14,6 +14,7 @@ use Drupal\Core\Entity\EntityStorageControllerInterface;
 use Drupal\Core\Field\FieldDefinition;
 use Drupal\Core\Language\Language;
 use Drupal\Core\TypedData\DataDefinition;
+use Drupal\user\UserInterface;
 
 /**
  * Defines the comment entity class.
@@ -43,11 +44,9 @@ use Drupal\Core\TypedData\DataDefinition;
  *     "label" = "subject",
  *     "uuid" = "uuid"
  *   },
- *   bundle_keys = {
- *     "bundle" = "field_id"
- *   },
  *   links = {
  *     "canonical" = "comment.permalink",
+ *     "delete-form" = "comment.confirm_delete",
  *     "edit-form" = "comment.edit_page",
  *     "admin-form" = "comment.bundle"
  *   }
@@ -293,7 +292,7 @@ class Comment extends ContentEntityBase implements CommentInterface {
       }
       // We test the value with '===' because we need to modify anonymous
       // users as well.
-      if ($this->uid->target_id === \Drupal::currentUser()->id() && \Drupal::currentUser()->isAuthenticated()) {
+      if ($this->getOwnerId() === \Drupal::currentUser()->id() && \Drupal::currentUser()->isAuthenticated()) {
         $this->name->value = \Drupal::currentUser()->getUsername();
       }
       // Add the values which aren't passed into the function.
@@ -345,11 +344,10 @@ class Comment extends ContentEntityBase implements CommentInterface {
    */
   public function permalink() {
     $entity = entity_load($this->get('entity_type')->value, $this->get('entity_id')->value);
-    $uri = $entity->uri();
-    $url['path'] = $uri['path'];
-    $url['options'] = array('fragment' => 'comment-' . $this->id());
+    $uri = $entity->urlInfo();
+    $uri['options'] = array('fragment' => 'comment-' . $this->id());
 
-    return $url;
+    return $uri;
   }
 
   /**
@@ -445,7 +443,7 @@ class Comment extends ContentEntityBase implements CommentInterface {
       ->setComputed(TRUE);
 
     $item_definition = $fields['field_name']->getItemDefinition();
-    $item_definition->setClass('\Drupal\comment\CommentFieldName');
+    $item_definition->setClass('\Drupal\comment\CommentFieldNameItem');
     $fields['field_name']->setItemDefinition($item_definition);
 
     return $fields;
@@ -465,6 +463,36 @@ class Comment extends ContentEntityBase implements CommentInterface {
     if (empty($values['field_id']) && !empty($values['field_name']) && !empty($values['entity_type'])) {
       $values['field_id'] = $values['entity_type'] . '__' . $values['field_name'];
     }
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getOwner() {
+    return $this->get('uid')->entity;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getOwnerId() {
+    return $this->get('uid')->target_id;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function setOwnerId($uid) {
+    $this->set('uid', $uid);
+    return $this;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function setOwner(UserInterface $account) {
+    $this->set('uid', $account->id());
+    return $this;
   }
 
 }

@@ -29,6 +29,7 @@ use Drupal\Core\Entity\EntityStorageControllerInterface;
  *     }
  *   },
  *   config_prefix = "block.block",
+ *   admin_permission = "administer blocks",
  *   fieldable = FALSE,
  *   entity_keys = {
  *     "id" = "id",
@@ -36,6 +37,7 @@ use Drupal\Core\Entity\EntityStorageControllerInterface;
  *     "uuid" = "uuid"
  *   },
  *   links = {
+ *     "delete-form" = "block.admin_block_delete",
  *     "edit-form" = "block.admin_edit"
  *   }
  * )

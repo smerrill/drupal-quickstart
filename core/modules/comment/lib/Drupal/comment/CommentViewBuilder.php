@@ -94,7 +94,7 @@ class CommentViewBuilder extends EntityViewBuilder {
     // Pre-load associated users into cache to leverage multiple loading.
     $uids = array();
     foreach ($entities as $entity) {
-      $uids[] = $entity->uid->target_id;
+      $uids[] = $entity->getOwnerId();
     }
     $this->entityManager->getStorageController('user')->loadMultiple(array_unique($uids));
 
@@ -128,7 +128,7 @@ class CommentViewBuilder extends EntityViewBuilder {
           'comment_entity_id' => $entity->id(),
           'view_mode' => $view_mode,
           'langcode' => $langcode,
-          'commented_entity_type' => $commented_entity->entityType(),
+          'commented_entity_type' => $commented_entity->getEntityTypeId(),
           'commented_entity_id' => $commented_entity->id(),
           'in_preview' => !empty($entity->in_preview),
         ),
@@ -240,12 +240,7 @@ class CommentViewBuilder extends EntityViewBuilder {
         );
       }
       if (empty($links)) {
-        $comment_post_forbidden = array(
-          '#theme' => 'comment_post_forbidden',
-          '#commented_entity' => $commented_entity,
-          '#field_name' => $entity->field_name->value,
-        );
-        $links['comment-forbidden']['title'] = drupal_render($comment_post_forbidden);
+        $links['comment-forbidden']['title'] = \Drupal::service('comment.manager')->forbiddenMessage($commented_entity, $entity->field_name->value);
         $links['comment-forbidden']['html'] = TRUE;
       }
     }
@@ -276,7 +271,7 @@ class CommentViewBuilder extends EntityViewBuilder {
     if (empty($comment->in_preview)) {
       $prefix = '';
       $commented_entity = $this->entityManager->getStorageController($comment->entity_type->value)->load($comment->entity_id->value);
-      $instance = $this->fieldInfo->getInstance($commented_entity->entityType(), $commented_entity->bundle(), $comment->field_name->value);
+      $instance = $this->fieldInfo->getInstance($commented_entity->getEntityTypeId(), $commented_entity->bundle(), $comment->field_name->value);
       $is_threaded = isset($comment->divs)
         && $instance->getSetting('default_mode') == COMMENT_MODE_THREADED;
 

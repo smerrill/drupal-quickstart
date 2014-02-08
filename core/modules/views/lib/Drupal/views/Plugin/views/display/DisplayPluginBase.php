@@ -1019,7 +1019,7 @@ abstract class DisplayPluginBase extends PluginBase {
       $title = $text;
     }
 
-    return l($text, 'admin/structure/views/nojs/display/' . $this->view->storage->id() . '/' . $this->display['id'] . '/' . $section, array('attributes' => array('class' => 'views-ajax-link ' . $class, 'title' => $title, 'id' => drupal_html_id('views-' . $this->display['id'] . '-' . $section)), 'html' => TRUE));
+    return l($text, 'admin/structure/views/nojs/display/' . $this->view->storage->id() . '/' . $this->display['id'] . '/' . $section, array('attributes' => array('class' => array('views-ajax-link', $class), 'title' => $title, 'id' => drupal_html_id('views-' . $this->display['id'] . '-' . $section)), 'html' => TRUE));
   }
 
   /**
@@ -2364,6 +2364,21 @@ abstract class DisplayPluginBase extends PluginBase {
         );
       }
     }
+  }
+
+  /**
+   * Creates menu links, if this display provides some.
+   *
+   * @param array $existing_links
+   *   An array of already existing menu items provided by drupal.
+   *
+   * @return array
+   *   The menu links registers for this display.
+   *
+   * @see hook_menu_link_defaults()
+   */
+  public function executeHookMenuLinkDefaults(array &$existing_links) {
+    return array();
   }
 
   /**

@@ -8,7 +8,6 @@
 namespace Drupal\search\Controller;
 
 use Drupal\Core\Controller\ControllerBase;
-use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\search\SearchPageInterface;
 use Drupal\search\SearchPageRepositoryInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
@@ -17,7 +16,7 @@ use Symfony\Component\HttpFoundation\Request;
 /**
  * Route controller for search.
  */
-class SearchController extends ControllerBase implements ContainerInjectionInterface {
+class SearchController extends ControllerBase {
 
   /**
    * The search page repository.
@@ -88,7 +87,7 @@ class SearchController extends ControllerBase implements ContainerInjectionInter
       }
     }
     // The form may be altered based on whether the search was run.
-    $build['search_form'] = $this->entityManager()->getForm($entity, 'search');
+    $build['search_form'] = $this->entityFormBuilder()->getForm($entity, 'search');
     $build['search_results'] = $results;
     return $build;
   }

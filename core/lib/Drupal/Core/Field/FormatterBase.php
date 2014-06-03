@@ -45,7 +45,7 @@ abstract class FormatterBase extends PluginSettingsBase implements FormatterInte
    *
    * @param string $plugin_id
    *   The plugin_id for the formatter.
-   * @param array $plugin_definition
+   * @param mixed $plugin_definition
    *   The plugin implementation definition.
    * @param \Drupal\Core\Field\FieldDefinitionInterface $field_definition
    *   The definition of the field to which the formatter is associated.
@@ -56,7 +56,7 @@ abstract class FormatterBase extends PluginSettingsBase implements FormatterInte
    * @param string $view_mode
    *   The view mode.
    */
-  public function __construct($plugin_id, array $plugin_definition, FieldDefinitionInterface $field_definition, array $settings, $label, $view_mode) {
+  public function __construct($plugin_id, $plugin_definition, FieldDefinitionInterface $field_definition, array $settings, $label, $view_mode) {
     parent::__construct(array(), $plugin_id, $plugin_definition);
 
     $this->fieldDefinition = $field_definition;
@@ -79,7 +79,6 @@ abstract class FormatterBase extends PluginSettingsBase implements FormatterInte
       $info = array(
         '#theme' => 'field',
         '#title' => $this->fieldDefinition->getLabel(),
-        '#access' => $items->access('view'),
         '#label_display' => $this->label,
         '#view_mode' => $this->viewMode,
         '#language' => $items->getLangcode(),
@@ -91,22 +90,9 @@ abstract class FormatterBase extends PluginSettingsBase implements FormatterInte
         '#object' => $entity,
         '#items' => $items,
         '#formatter' => $this->getPluginId(),
-        '#cache' => array('tags' => array())
       );
 
-      // Gather cache tags from reference fields.
-      foreach ($items as $item) {
-        if (isset($item->format)) {
-          $info['#cache']['tags']['filter_format'] = $item->format;
-        }
-
-        if (isset($item->entity)) {
-          $info['#cache']['tags'][$item->entity->getEntityTypeId()][] = $item->entity->id();
-          $info['#cache']['tags'][$item->entity->getEntityTypeId() . '_view'] = TRUE;
-        }
-      }
-
-      $addition[$field_name] = array_merge($info, $elements);
+      $addition = array_merge($info, $elements);
     }
 
     return $addition;

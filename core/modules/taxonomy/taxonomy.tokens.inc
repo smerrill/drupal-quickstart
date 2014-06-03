@@ -5,6 +5,9 @@
  * Builds placeholder replacement tokens for taxonomy terms and vocabularies.
  */
 
+use Drupal\Component\Utility\String;
+use Drupal\Component\Utility\Xss;
+
 /**
  * Implements hook_token_info().
  */
@@ -104,11 +107,11 @@ function taxonomy_tokens($type, $tokens, array $data = array(), array $options =
           break;
 
         case 'name':
-          $replacements[$original] = $sanitize ? check_plain($term->name->value) : $term->name->value;
+          $replacements[$original] = $sanitize ? String::checkPlain($term->getName()) : $term->getName();
           break;
 
         case 'description':
-          $replacements[$original] = $sanitize ? $term->description->processed : $term->description->value;
+          $replacements[$original] = $sanitize ? $term->description->processed : $term->getDescription();
           break;
 
         case 'url':
@@ -125,13 +128,13 @@ function taxonomy_tokens($type, $tokens, array $data = array(), array $options =
 
         case 'vocabulary':
           $vocabulary = entity_load('taxonomy_vocabulary', $term->bundle());
-          $replacements[$original] = check_plain($vocabulary->name);
+          $replacements[$original] = String::checkPlain($vocabulary->name);
           break;
 
         case 'parent':
           if ($parents = taxonomy_term_load_parents($term->id())) {
             $parent = array_pop($parents);
-            $replacements[$original] = check_plain($parent->name->value);
+            $replacements[$original] = String::checkPlain($parent->getName());
           }
           break;
       }
@@ -158,11 +161,11 @@ function taxonomy_tokens($type, $tokens, array $data = array(), array $options =
           break;
 
         case 'name':
-          $replacements[$original] = $sanitize ? check_plain($vocabulary->name) : $vocabulary->name;
+          $replacements[$original] = $sanitize ? String::checkPlain($vocabulary->name) : $vocabulary->name;
           break;
 
         case 'description':
-          $replacements[$original] = $sanitize ? filter_xss($vocabulary->description) : $vocabulary->description;
+          $replacements[$original] = $sanitize ? Xss::filter($vocabulary->description) : $vocabulary->description;
           break;
 
         case 'term-count':
@@ -174,7 +177,7 @@ function taxonomy_tokens($type, $tokens, array $data = array(), array $options =
           break;
 
         case 'node-count':
-          $replacements[$original] = \Drupal::entityManager()->getStorageController('taxonomy_term')->nodeCount($vocabulary->id());
+          $replacements[$original] = \Drupal::entityManager()->getStorage('taxonomy_term')->nodeCount($vocabulary->id());
           break;
       }
     }

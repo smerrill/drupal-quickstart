@@ -8,6 +8,7 @@
 namespace Drupal\Tests\Core\Utility {
 
 use Drupal\Core\Language\Language;
+use Drupal\Core\Url;
 use Drupal\Core\Utility\LinkGenerator;
 use Drupal\Tests\UnitTestCase;
 
@@ -15,6 +16,11 @@ use Drupal\Tests\UnitTestCase;
  * Tests the link generator.
  *
  * @see \Drupal\Core\Utility\LinkGenerator
+ *
+ * @group Drupal
+ * @group Utility
+ *
+ * @coversDefaultClass \Drupal\Core\Utility\LinkGenerator
  */
 class LinkGeneratorTest extends UnitTestCase {
 
@@ -40,13 +46,6 @@ class LinkGeneratorTest extends UnitTestCase {
   protected $moduleHandler;
 
   /**
-   * The mocked path alias manager.
-   *
-   * @var \Drupal\Core\Path\AliasManagerInterface|\PHPUnit_Framework_MockObject_MockObject
-   */
-  protected $aliasManager;
-
-  /**
    * Contains the LinkGenerator default options.
    */
   protected $defaultOptions = array(
@@ -54,6 +53,7 @@ class LinkGeneratorTest extends UnitTestCase {
     'html' => FALSE,
     'language' => NULL,
     'set_active_class' => FALSE,
+    'absolute' => FALSE,
   );
 
   /**
@@ -76,9 +76,8 @@ class LinkGeneratorTest extends UnitTestCase {
 
     $this->urlGenerator = $this->getMock('\Drupal\Core\Routing\UrlGenerator', array(), array(), '', FALSE);
     $this->moduleHandler = $this->getMock('Drupal\Core\Extension\ModuleHandlerInterface');
-    $this->aliasManager = $this->getMock('\Drupal\Core\Path\AliasManagerInterface');
 
-    $this->linkGenerator = new LinkGenerator($this->urlGenerator, $this->moduleHandler, $this->aliasManager);
+    $this->linkGenerator = new LinkGenerator($this->urlGenerator, $this->moduleHandler);
   }
 
   /**
@@ -122,6 +121,66 @@ class LinkGeneratorTest extends UnitTestCase {
       'tag' => 'a',
       'attributes' => array('href' => $url),
       ), $result);
+  }
+
+  /**
+   * Tests the generateFromUrl() method with a route.
+   *
+   * @covers ::generateFromUrl()
+   */
+  public function testGenerateFromUrl() {
+    $this->urlGenerator->expects($this->once())
+      ->method('generateFromRoute')
+      ->with('test_route_1', array(), array('fragment' => 'the-fragment') + $this->defaultOptions)
+      ->will($this->returnValue('/test-route-1#the-fragment'));
+
+    $this->moduleHandler->expects($this->once())
+      ->method('alter')
+      ->with('link', $this->isType('array'));
+
+    $url = new Url('test_route_1', array(), array('fragment' => 'the-fragment'));
+    $url->setUrlGenerator($this->urlGenerator);
+
+    $result = $this->linkGenerator->generateFromUrl('Test', $url);
+    $this->assertTag(array(
+      'tag' => 'a',
+      'attributes' => array(
+        'href' => '/test-route-1#the-fragment',
+      ),
+      'content' => 'Test',
+    ), $result);
+  }
+
+  /**
+   * Tests the generateFromUrl() method with an external URL.
+   *
+   * The set_active_class option is set to TRUE to ensure this does not cause
+   * an error together with an external URL.
+   *
+   * @covers ::generateFromUrl()
+   */
+  public function testGenerateFromUrlExternal() {
+    $this->urlGenerator->expects($this->once())
+      ->method('generateFromPath')
+      ->with('http://drupal.org', array('set_active_class' => TRUE, 'external' => TRUE) + $this->defaultOptions)
+      ->will($this->returnArgument(0));
+
+    $this->moduleHandler->expects($this->once())
+      ->method('alter')
+      ->with('link', $this->isType('array'));
+
+    $url = Url::createFromPath('http://drupal.org');
+    $url->setUrlGenerator($this->urlGenerator);
+    $url->setOption('set_active_class', TRUE);
+
+    $result = $this->linkGenerator->generateFromUrl('Drupal', $url);
+    $this->assertTag(array(
+      'tag' => 'a',
+      'attributes' => array(
+        'href' => 'http://drupal.org',
+      ),
+      'content' => 'Drupal',
+    ), $result);
   }
 
   /**
@@ -310,14 +369,6 @@ class LinkGeneratorTest extends UnitTestCase {
         array('test_route_1', array(), 'test-route-1'),
         array('test_route_3', array(), 'test-route-3'),
         array('test_route_4', array('object' => '1'), 'test-route-4/1'),
-      )));
-
-    $this->aliasManager->expects($this->exactly(7))
-      ->method('getSystemPath')
-      ->will($this->returnValueMap(array(
-        array('test-route-1', NULL, 'test-route-1'),
-        array('test-route-3', NULL, 'test-route-3'),
-        array('test-route-4/1', NULL, 'test-route-4/1'),
       )));
 
     $this->moduleHandler->expects($this->exactly(8))

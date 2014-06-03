@@ -5,16 +5,16 @@
  * Enables semantically enriched output for Drupal sites in the form of RDFa.
  */
 
-use Drupal\Component\Utility\NestedArray;
 use Drupal\Core\Template\Attribute;
 use Symfony\Cmf\Component\Routing\RouteObjectInterface;
+use Symfony\Component\HttpFoundation\Request;
 
 /**
  * Implements hook_help().
  */
-function rdf_help($path, $arg) {
-  switch ($path) {
-    case 'admin/help#rdf':
+function rdf_help($route_name, Request $request) {
+  switch ($route_name) {
+    case 'help.page.rdf':
       $output = '';
       $output .= '<h3>' . t('About') . '</h3>';
       $output .= '<p>' . t('The RDF module enriches your content with metadata to let other applications (e.g., search engines, aggregators, and so on) better understand its relationships and attributes. This semantically enriched, machine-readable output for Drupal sites uses the <a href="!rdfa">RDFa specification</a>, which allows RDF data to be embedded in HTML markup. Other modules can define mappings of their data to RDF terms, and the RDF module makes this RDF data available to the theme. The core Drupal modules define RDF mappings for their data model, and the core Drupal themes output this RDF metadata information along with the human-readable visual information. For more information, see the <a href="!rdf">online documentation for the RDF module</a>.', array('!rdfa' => 'http://www.w3.org/TR/xhtml-rdfa-primer/', '!rdf' => 'https://drupal.org/documentation/modules/rdf')) . '</p>';
@@ -113,8 +113,13 @@ function rdf_get_namespaces() {
   // namespace, do not use \Drupal::moduleHandler()->invokeAll().
   foreach (\Drupal::moduleHandler()->getImplementations('rdf_namespaces') as $module) {
     $function = $module . '_rdf_namespaces';
-    if (function_exists($function)) {
-      $namespaces = NestedArray::mergeDeep($function(), $namespaces);
+    foreach($function() as $prefix => $namespace) {
+      if (array_key_exists($prefix, $namespaces) && $namespace !== $namespaces[$prefix]) {
+        throw new Exception(t('Tried to map @prefix to @namespace, but @prefix is already mapped to @orig_namespace.', array('@prefix' => $prefix, '@namespace' => $namespace, '@orig_namespace' => $namespaces[$prefix])));
+      }
+      else {
+        $namespaces[$prefix] = $namespace;
+      }
     }
   }
   return $namespaces;
@@ -228,11 +233,11 @@ function rdf_comment_load($comments) {
     // to optimize performance for websites that implement an entity cache.
     $created_mapping = rdf_get_mapping('comment', $comment->bundle())
       ->getPreparedFieldMapping('created');
-    $comment->rdf_data['date'] = rdf_rdfa_attributes($created_mapping, $comment->created->value);
-    $entity = entity_load($comment->entity_type->value, $comment->entity_id->value);
+    $comment->rdf_data['date'] = rdf_rdfa_attributes($created_mapping, $comment->getCreatedTime());
+    $entity = $comment->getCommentedEntity();
     $comment->rdf_data['entity_uri'] = $entity->url();
-    if ($comment->pid->target_id) {
-      $comment->rdf_data['pid_uri'] = url('comment/' . $comment->pid->target_id);
+    if ($comment->hasParentComment()) {
+      $comment->rdf_data['pid_uri'] = $comment->getParentComment()->url();
     }
   }
 }
@@ -278,7 +283,7 @@ function rdf_preprocess_node(&$variables) {
   $variables['attributes']['typeof'] = empty($bundle_mapping['types']) ? NULL : $bundle_mapping['types'];
 
   // Adds RDFa markup for the node title as metadata because wrapping the title
-  // with markup is not reliable and the title output is different depdending on
+  // with markup is not reliable and the title output is different depending on
   // the view mode (e.g. full vs. teaser).
   $title_mapping = $mapping->getPreparedFieldMapping('title');
   if ($title_mapping) {
@@ -313,7 +318,7 @@ function rdf_preprocess_node(&$variables) {
     $comment_count_mapping = $mapping->getPreparedFieldMapping('comment_count');
     if (!empty($comment_count_mapping['properties'])) {
       $fields = array_keys(\Drupal::service('comment.manager')->getFields('node'));
-      $definitions = array_keys($variables['node']->getPropertyDefinitions());
+      $definitions = array_keys($variables['node']->getFieldDefinitions());
       $valid_fields = array_intersect($fields, $definitions);
       $count = 0;
       foreach ($valid_fields as $field_name) {
@@ -347,7 +352,7 @@ function rdf_preprocess_user(&$variables) {
   }
   // If we are on the user account page, add the relationship between the
   // sioc:UserAccount and the foaf:Person who holds the account.
-  if (\Drupal::request()->attributes->get(RouteObjectInterface::ROUTE_NAME) == $uri['route_name']) {
+  if (\Drupal::request()->attributes->get(RouteObjectInterface::ROUTE_NAME) == $uri->getRouteName()) {
     // Adds the markup for username as language neutral literal, see
     // rdf_preprocess_username().
     $name_mapping = $mapping->getPreparedFieldMapping('name');
@@ -409,6 +414,11 @@ function rdf_preprocess_username(&$variables) {
   $homepage_mapping = $mapping->getPreparedFieldMapping('homepage');
   if (!empty($variables['homepage']) && !empty($homepage_mapping)) {
     $attributes['rel'] = $homepage_mapping['properties'];
+  }
+  // Long usernames are truncated by template_preprocess_username(). Store the
+  // full name in the content attribute so it can be extracted in RDFa.
+  if ($variables['truncated']) {
+    $attributes['content'] = check_plain($variables['name_raw']);
   }
   // The remaining attributes can have multiple values listed, with whitespace
   // separating the values in the RDFa attributes
@@ -491,7 +501,7 @@ function rdf_preprocess_comment(&$variables) {
     $variables['rdf_metadata_attributes'][] = $parent_entity_attributes;
 
     // Adds the relation to parent comment, if it exists.
-    if ($comment->pid->target_id != 0) {
+    if ($comment->hasParentComment()) {
       $parent_comment_attributes['rel'] = $pid_mapping['properties'];
       // The parent comment URI is precomputed as part of the rdf_data so that
       // it can be cached as part of the entity.
@@ -527,7 +537,7 @@ function rdf_preprocess_taxonomy_term(&$variables) {
       'about' => url('taxonomy/term/' . $term->id()),
       'typeof' => $bundle_mapping['types'],
       'property' => $name_field_mapping['properties'],
-      'content' => $term->label(),
+      'content' => $term->getName(),
     ),
   );
   drupal_add_html_head($term_label_meta, 'rdf_term_label');

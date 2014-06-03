@@ -90,6 +90,14 @@ function views_views_data() {
     ),
   );
 
+  $data['views']['messages'] = array(
+    'title' => t('Messages'),
+    'help' => t('Displays messages in an area.'),
+    'area' => array(
+      'id' => 'messages',
+    ),
+  );
+
   $data['views']['http_status_code'] = array(
     'title' => t('Response status code'),
     'help' => t('Alter the HTTP response status code used by this view, mostly helpful for empty results.'),
@@ -115,15 +123,15 @@ function views_views_data() {
   );
 
   // Registers an entity area handler per entity type.
-  foreach (\Drupal::entityManager()->getDefinitions() as $entity_type => $entity_info) {
+  foreach (\Drupal::entityManager()->getDefinitions() as $entity_type_id => $entity_type) {
     // Exclude entity types, which cannot be rendered.
-    if ($entity_info->hasViewBuilderClass()) {
-      $label = $entity_info->getLabel();
-      $data['views']['entity_' . $entity_type] = array(
+    if ($entity_type->hasViewBuilderClass()) {
+      $label = $entity_type->getLabel();
+      $data['views']['entity_' . $entity_type_id] = array(
         'title' => t('Rendered entity - @label', array('@label' => $label)),
         'help' => t('Displays a rendered @label entity in an area.', array('@label' => $label)),
         'area' => array(
-          'entity_type' => $entity_type,
+          'entity_type' => $entity_type_id,
           'id' => 'entity',
         ),
       );
@@ -132,7 +140,7 @@ function views_views_data() {
 
   // Registers an action bulk form per entity.
   foreach (\Drupal::entityManager()->getDefinitions() as $entity_type => $entity_info) {
-    $actions = array_filter(\Drupal::entityManager()->getStorageController('action')->loadMultiple(), function (ActionConfigEntityInterface $action) use ($entity_type) {
+    $actions = array_filter(\Drupal::entityManager()->getStorage('action')->loadMultiple(), function (ActionConfigEntityInterface $action) use ($entity_type) {
       return $action->getType() == $entity_type;
     });
     if (empty($actions)) {

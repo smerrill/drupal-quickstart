@@ -16,18 +16,12 @@ use Drupal\Core\Language\LanguageDefault;
 interface ConfigFactoryInterface {
 
   /**
-   * Prefix for all language configuration files.
-   */
-  const LANGUAGE_CONFIG_PREFIX = 'language.config';
-
-  /**
    * Sets the override state.
    *
    * @param bool $state
    *   TRUE if overrides should be applied, FALSE otherwise.
    *
-   * @return \Drupal\Core\Config\ConfigFactory
-   *   The config factory object.
+   * @return $this
    */
   public function setOverrideState($state);
 
@@ -59,7 +53,7 @@ interface ConfigFactoryInterface {
    * @param array $names
    *   List of names of configuration objects.
    *
-   * @return array
+   * @return \Drupal\Core\Config\Config[]
    *   List of successfully loaded configuration objects, keyed by name.
    */
   public function loadMultiple(array $names);
@@ -67,17 +61,16 @@ interface ConfigFactoryInterface {
   /**
    * Resets and re-initializes configuration objects. Internal use only.
    *
-   * @param string $name
+   * @param string|null $name
    *   (optional) The name of the configuration object to reset. If omitted, all
    *   configuration objects are reset.
    *
-   * @return \Drupal\Core\Config\ConfigFactory
-   *   The config factory object.
+   * @return $this
    */
   public function reset($name = NULL);
 
   /**
-   * Renames a configuration object using the storage controller.
+   * Renames a configuration object using the storage.
    *
    * @param string $old_name
    *   The old name of the configuration object.
@@ -114,72 +107,31 @@ interface ConfigFactoryInterface {
   /**
    * Clears the config factory static cache.
    *
-   * @return \Drupal\Core\Config\ConfigFactory
-   *   The config factory object.
+   * @return $this
    */
   public function clearStaticCache();
 
   /**
-   * Sets the language to be used in configuration overrides.
+   * Gets configuration object names starting with a given prefix.
    *
-   * @param \Drupal\Core\Language\Language $language
-   *   The language object to be set on the config factory. Used to override
-   *   configuration by language.
+   * @see \Drupal\Core\Config\StorageInterface::listAll()
    *
-   * @return \Drupal\Core\Config\ConfigFactory
-   *   The config factory object.
-   */
-  public function setLanguage(Language $language = NULL);
-
-  /**
-   * Sets the language for configuration overrides using the default language.
-   *
-   * @param \Drupal\Core\Language\LanguageDefault $language_default
-   *   The default language service. This sets the initial language on the
-   *   config factory to the site's default. The language can be used to
-   *   override configuration data if language overrides are available.
-   *
-   * @return \Drupal\Core\Config\ConfigFactory
-   *   The config factory object.
-   */
-  public function setLanguageFromDefault(LanguageDefault $language_default);
-
-  /**
-   * Gets the language Used to override configuration.
-   *
-   * @return \Drupal\Core\Language\Language
-   */
-  public function getLanguage();
-
-  /**
-   * Gets configuration names for this language.
-   *
-   * It will be the same name with a prefix depending on language code:
-   * language.config.LANGCODE.NAME
-   *
-   * @param array $names
-   *   A list of configuration object names.
+   * @param string $prefix
+   *   (optional) The prefix to search for. If omitted, all configuration object
+   *   names that exist are returned.
    *
    * @return array
-   *   The localized config names, keyed by configuration object name.
+   *   An array containing matching configuration object names.
    */
-  public function getLanguageConfigNames(array $names);
+  public function listAll($prefix = '');
 
   /**
-   * Gets configuration name for the provided language.
+   * Adds config factory override services.
    *
-   * The name will be the same name with a prefix depending on language code:
-   * language.config.LANGCODE.NAME
-   *
-   * @param string $langcode
-   *   The language code.
-   * @param string $name
-   *   The name of the configuration object.
-   *
-   * @return bool|string
-   *   The configuration name for configuration object providing overrides.
-   *   Returns false if the name already starts with the language config prefix.
+   * @param \Drupal\Core\Config\ConfigFactoryOverrideInterface $config_factory_override
+   *   The config factory override service to add. It is added at the end of the
+   *   priority list (lower priority relative to existing ones).
    */
-  public function getLanguageConfigName($langcode, $name);
+  public function addOverride(ConfigFactoryOverrideInterface $config_factory_override);
 
 }

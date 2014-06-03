@@ -31,13 +31,12 @@ use Drupal\Component\Utility\Xss;
  * - Entity hooks: Generic hooks for "entity" operations. These are always
  *   invoked on all modules.
  *
- * Here is a list of the node and entity hooks that are invoked, field
- * operations, and other steps that take place during node operations:
+ * Here is a list of the node and entity hooks that are invoked, and other
+ * steps that take place during node operations:
  * - Instantiating a new node:
  *   - hook_node_create() (all)
  *   - hook_entity_create() (all)
  * - Creating a new node (calling $node->save() on a new node):
- *   - field_attach_presave()
  *   - hook_node_presave() (all)
  *   - hook_entity_presave() (all)
  *   - Node and revision records are written to the database
@@ -46,7 +45,6 @@ use Drupal\Component\Utility\Xss;
  *   - hook_node_access_records() (all)
  *   - hook_node_access_records_alter() (all)
  * - Updating an existing node (calling $node->save() on an existing node):
- *   - field_attach_presave()
  *   - hook_node_presave() (all)
  *   - hook_entity_presave() (all)
  *   - Node and revision records are written to the database
@@ -61,9 +59,8 @@ use Drupal\Component\Utility\Xss;
  *   - hook_node_load() (all)
  * - Viewing a single node (calling node_view() - note that the input to
  *   node_view() is a loaded node, so the Loading steps above are already done):
- *   - field_attach_prepare_view()
  *   - hook_entity_prepare_view() (all)
- *   - field_attach_view()
+ *   - hook_entity_display_build_alter() (all)
  *   - hook_node_view() (all)
  *   - hook_entity_view() (all)
  *   - hook_node_view_alter() (all)
@@ -71,9 +68,8 @@ use Drupal\Component\Utility\Xss;
  * - Viewing multiple nodes (calling node_view_multiple() - note that the input
  *   to node_view_multiple() is a set of loaded nodes, so the Loading steps
  *   above are already done):
- *   - field_attach_prepare_view()
  *   - hook_entity_prepare_view() (all)
- *   - field_attach_view()
+ *   - hook_entity_display_build_alter() (all)
  *   - hook_node_view() (all)
  *   - hook_entity_view() (all)
  *   - hook_node_view_alter() (all)
@@ -93,7 +89,7 @@ use Drupal\Component\Utility\Xss;
  *   existing node, it will already be loaded; see the Loading section above):
  *   - hook_node_prepare_form() (all)
  *   - hook_entity_prepare_form() (all)
- *   - field_attach_form()
+ *   - @todo hook for EntityFormDisplay::buildForm()
  * - Validating a node during editing form submit (calling
  *   node_form_validate()):
  *   - hook_node_validate() (all)
@@ -152,7 +148,7 @@ use Drupal\Component\Utility\Xss;
  *   'grant_update' => 0,
  *   'grant_delete' => 0,
  * );
- * drupal_write_record('node_access', $record);
+ * db_insert('node_access')->fields($record)->execute();
  * @endcode
  * And then in its hook_node_grants() implementation, it would need to return:
  * @code
@@ -165,12 +161,12 @@ use Drupal\Component\Utility\Xss;
  * sure to restore your {node_access} record after node_access_rebuild() is
  * called.
  *
- * @param $account
- *   The user object whose grants are requested.
- * @param $op
+ * @param \Drupal\Core\Session\AccountInterface $account
+ *   The acccount object whose grants are requested.
+ * @param string $op
  *   The node operation to be performed, such as 'view', 'update', or 'delete'.
  *
- * @return
+ * @return array
  *   An array whose keys are "realms" of grants, and whose values are arrays of
  *   the grant IDs within this realm that this user is being granted.
  *
@@ -180,7 +176,7 @@ use Drupal\Component\Utility\Xss;
  * @see node_access_rebuild()
  * @ingroup node_access
  */
-function hook_node_grants($account, $op) {
+function hook_node_grants(\Drupal\Core\Session\AccountInterface $account, $op) {
   if (user_access('access private content', $account)) {
     $grants['example'] = array(1);
   }
@@ -353,11 +349,11 @@ function hook_node_access_records_alter(&$grants, Drupal\node\NodeInterface $nod
  * permissions assigned to a user role, or specific attributes of a user
  * account.
  *
- * @param $grants
+ * @param array $grants
  *   The $grants array returned by hook_node_grants().
- * @param $account
- *   The user account requesting access to content.
- * @param $op
+ * @param \Drupal\Core\Session\AccountInterface $account
+ *   The account requesting access to content.
+ * @param string $op
  *   The operation being performed, 'view', 'update' or 'delete'.
  *
  * @see hook_node_grants()
@@ -365,7 +361,7 @@ function hook_node_access_records_alter(&$grants, Drupal\node\NodeInterface $nod
  * @see hook_node_access_records_alter()
  * @ingroup node_access
  */
-function hook_node_grants_alter(&$grants, $account, $op) {
+function hook_node_grants_alter(&$grants, \Drupal\Core\Session\AccountInterface $account, $op) {
   // Our sample module never allows certain roles to edit or delete
   // content. Since some other node access modules might allow this
   // permission, we expressly remove it by returning an empty $grants
@@ -493,9 +489,9 @@ function hook_node_create(\Drupal\node\NodeInterface $node) {
  * for all available nodes should be loaded in a single query where possible.
  *
  * This hook is invoked during node loading, which is handled by entity_load(),
- * via classes Drupal\node\NodeStorageController and
- * Drupal\Core\Entity\DatabaseStorageController. After the node information and
- * field values are read from the database or the entity cache,
+ * via classes Drupal\node\NodeStorage and
+ * Drupal\Core\Entity\ContentEntityDatabaseStorage. After the node information
+ * and field values are read from the database or the entity cache,
  * hook_entity_load() is invoked on all implementing modules, and finally
  * hook_node_load() is invoked on all implementing modules.
  *
@@ -596,12 +592,10 @@ function hook_node_access(\Drupal\node\NodeInterface $node, $op, $account, $lang
 /**
  * Act on a node object about to be shown on the add/edit form.
  *
- * This hook is invoked from NodeFormController::prepareEntity().
+ * This hook is invoked from NodeForm::prepareEntity().
  *
  * @param \Drupal\node\NodeInterface $node
  *   The node that is about to be shown on the form.
- * @param $form_display
- *   The current form display.
  * @param $operation
  *   The current operation.
  * @param array $form_state
@@ -609,7 +603,7 @@ function hook_node_access(\Drupal\node\NodeInterface $node, $op, $account, $lang
  *
  * @ingroup node_api_hooks
  */
-function hook_node_prepare_form(\Drupal\node\NodeInterface $node, $form_display, $operation, array &$form_state) {
+function hook_node_prepare_form(\Drupal\node\NodeInterface $node, $operation, array &$form_state) {
   if (!isset($node->my_rating)) {
     $node->my_rating = \Drupal::config("my_rating_{$node->bundle()}")->get('enabled');
   }
@@ -717,7 +711,7 @@ function hook_node_update_index(\Drupal\node\NodeInterface $node, $langcode) {
 /**
  * Perform node validation before a node is created or updated.
  *
- * This hook is invoked from NodeFormController::validate(), after a user has
+ * This hook is invoked from NodeForm::validate(), after a user has
  * finished editing the node and is previewing or submitting it. It is invoked
  * at the end of all the standard validation steps.
  *
@@ -776,20 +770,21 @@ function hook_node_submit(\Drupal\node\NodeInterface $node, $form, &$form_state)
 /**
  * Act on a node that is being assembled before rendering.
  *
- * The module may add elements to $node->content prior to rendering.
- * The structure of $node->content is a renderable array as expected by
- * drupal_render().
+ * The module may add elements to a node's renderable array array prior to
+ * rendering.
  *
  * When $view_mode is 'rss', modules can also add extra RSS elements and
  * namespaces to $node->rss_elements and $node->rss_namespaces respectively for
  * the RSS item generated for this node.
  * For details on how this is used, see node_feed().
  *
+ * @param array &$build
+ *   A renderable array representing the node content.
  * @param \Drupal\node\NodeInterface $node
  *   The node that is being assembled for rendering.
  * @param \Drupal\Core\Entity\Display\EntityViewDisplayInterface $display
- *   The entity_display object holding the display options configured for the
- *   node components.
+ *   The entity view display holding the display options configured for the node
+ *   components.
  * @param string $view_mode
  *   The $view_mode parameter from node_view().
  * @param string $langcode
@@ -800,12 +795,12 @@ function hook_node_submit(\Drupal\node\NodeInterface $node, $form, &$form_state)
  *
  * @ingroup node_api_hooks
  */
-function hook_node_view(\Drupal\node\NodeInterface $node, \Drupal\Core\Entity\Display\EntityViewDisplayInterface $display, $view_mode, $langcode) {
+function hook_node_view(array &$build, \Drupal\node\NodeInterface $node, \Drupal\Core\Entity\Display\EntityViewDisplayInterface $display, $view_mode, $langcode) {
   // Only do the extra work if the component is configured to be displayed.
   // This assumes a 'mymodule_addition' extra field has been defined for the
-  // node type in hook_field_extra_fields().
+  // node type in hook_entity_extra_field_info().
   if ($display->getComponent('mymodule_addition')) {
-    $node->content['mymodule_addition'] = array(
+    $build['mymodule_addition'] = array(
       '#markup' => mymodule_addition($node),
       '#theme' => 'mymodule_my_additional_field',
     );
@@ -822,23 +817,23 @@ function hook_node_view(\Drupal\node\NodeInterface $node, \Drupal\Core\Entity\Di
  * If the module wishes to act on the rendered HTML of the node rather than the
  * structured content array, it may use this hook to add a #post_render
  * callback.  Alternatively, it could also implement hook_preprocess_HOOK() for
- * node.html.twig. See drupal_render() and theme() documentation respectively
+ * node.html.twig. See drupal_render() and _theme() documentation respectively
  * for details.
  *
- * @param $build
+ * @param &$build
  *   A renderable array representing the node content.
  * @param \Drupal\node\NodeInterface $node
  *   The node being rendered.
  * @param \Drupal\Core\Entity\Display\EntityViewDisplayInterface $display
- *   The entity_display object holding the display options configured for the
- *   node components.
+ *   The entity view display holding the display options configured for the node
+ *   components.
  *
  * @see node_view()
  * @see hook_entity_view_alter()
  *
  * @ingroup node_api_hooks
  */
-function hook_node_view_alter(&$build, \Drupal\node\NodeInterface $node, \Drupal\Core\Entity\Display\EntityViewDisplayInterface $display) {
+function hook_node_view_alter(array &$build, \Drupal\node\NodeInterface $node, \Drupal\Core\Entity\Display\EntityViewDisplayInterface $display) {
   if ($build['#view_mode'] == 'full' && isset($build['an_additional_field'])) {
     // Change its weight.
     $build['an_additional_field']['#weight'] = -10;
@@ -904,7 +899,7 @@ function hook_ranking() {
         // always 0, should be 0.
         'score' => 'vote_node_data.average / CAST(%f AS DECIMAL)',
         // Pass in the highest possible voting score as a decimal argument.
-        'arguments' => array(\Drupal::config('vote.settings').get('score_max')),
+        'arguments' => array(\Drupal::config('vote.settings')->get('score_max')),
       ),
     );
   }

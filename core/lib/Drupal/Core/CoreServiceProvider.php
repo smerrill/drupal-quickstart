@@ -7,23 +7,19 @@
 
 namespace Drupal\Core;
 
+use Drupal\Core\Cache\CacheContextsPass;
 use Drupal\Core\Cache\ListCacheBinsPass;
 use Drupal\Core\DependencyInjection\ServiceProviderInterface;
 use Drupal\Core\DependencyInjection\ContainerBuilder;
 use Drupal\Core\DependencyInjection\Compiler\ModifyServiceDefinitionsPass;
+use Drupal\Core\DependencyInjection\Compiler\TaggedHandlersPass;
 use Drupal\Core\DependencyInjection\Compiler\RegisterKernelListenersPass;
 use Drupal\Core\DependencyInjection\Compiler\RegisterAccessChecksPass;
-use Drupal\Core\DependencyInjection\Compiler\RegisterPathProcessorsPass;
-use Drupal\Core\DependencyInjection\Compiler\RegisterRouteProcessorsPass;
-use Drupal\Core\DependencyInjection\Compiler\RegisterRouteFiltersPass;
-use Drupal\Core\DependencyInjection\Compiler\RegisterRouteEnhancersPass;
 use Drupal\Core\DependencyInjection\Compiler\RegisterParamConvertersPass;
 use Drupal\Core\DependencyInjection\Compiler\RegisterServicesForDestructionPass;
-use Drupal\Core\DependencyInjection\Compiler\RegisterStringTranslatorsPass;
-use Drupal\Core\DependencyInjection\Compiler\RegisterBreadcrumbBuilderPass;
 use Drupal\Core\DependencyInjection\Compiler\RegisterAuthenticationPass;
-use Drupal\Core\DependencyInjection\Compiler\RegisterTwigExtensionsPass;
-use Drupal\Core\Theme\ThemeNegotiatorPass;
+use Drupal\Core\Plugin\PluginManagerPass;
+use Drupal\Core\Site\Settings;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\DependencyInjection\Definition;
@@ -51,58 +47,37 @@ class CoreServiceProvider implements ServiceProviderInterface  {
     // during a subrequest).
     $container->addScope(new Scope('request'));
     $this->registerTwig($container);
-    $this->registerModuleHandler($container);
     $this->registerUuid($container);
+    $this->registerTest($container);
 
-    $container->addCompilerPass(new RegisterRouteFiltersPass());
+    // Add the compiler pass that lets service providers modify existing
+    // service definitions. This pass must come first so that later
+    // list-building passes are operating on the post-alter services list.
+    $container->addCompilerPass(new ModifyServiceDefinitionsPass());
+
+    // Collect tagged handler services as method calls on consumer services.
+    $container->addCompilerPass(new TaggedHandlersPass());
+
     // Add a compiler pass for registering event subscribers.
     $container->addCompilerPass(new RegisterKernelListenersPass(), PassConfig::TYPE_AFTER_REMOVING);
+
     $container->addCompilerPass(new RegisterAccessChecksPass());
+
     // Add a compiler pass for upcasting route parameters.
     $container->addCompilerPass(new RegisterParamConvertersPass());
-    $container->addCompilerPass(new RegisterRouteEnhancersPass());
+
     // Add a compiler pass for registering services needing destruction.
     $container->addCompilerPass(new RegisterServicesForDestructionPass());
+
     // Add the compiler pass that will process the tagged services.
-    $container->addCompilerPass(new RegisterPathProcessorsPass());
-    $container->addCompilerPass(new RegisterRouteProcessorsPass());
     $container->addCompilerPass(new ListCacheBinsPass());
-    // Add the compiler pass for appending string translators.
-    $container->addCompilerPass(new RegisterStringTranslatorsPass());
-    // Add the compiler pass that will process the tagged breadcrumb builder
-    // services.
-    $container->addCompilerPass(new RegisterBreadcrumbBuilderPass());
-    // Add the compiler pass that will process the tagged theme negotiator
-    // service.
-    $container->addCompilerPass(new ThemeNegotiatorPass());
-    // Add the compiler pass that lets service providers modify existing
-    // service definitions.
-    $container->addCompilerPass(new ModifyServiceDefinitionsPass());
+    $container->addCompilerPass(new CacheContextsPass());
+
     // Add the compiler pass that will process tagged authentication services.
     $container->addCompilerPass(new RegisterAuthenticationPass());
-    // Register Twig extensions.
-    $container->addCompilerPass(new RegisterTwigExtensionsPass());
-  }
 
-  /**
-   * Registers the module handler.
-   *
-   * As this is different during install, it needs to stay in PHP.
-   */
-  protected function registerModuleHandler(ContainerBuilder $container) {
-    // The ModuleHandler manages enabled modules and provides the ability to
-    // invoke hooks in all enabled modules.
-    if ($container->getParameter('kernel.environment') == 'install') {
-      // During installation we use the non-cached version.
-      $container->register('module_handler', 'Drupal\Core\Extension\ModuleHandler')
-        ->addArgument('%container.modules%');
-    }
-    else {
-      $container->register('module_handler', 'Drupal\Core\Extension\CachedModuleHandler')
-        ->addArgument('%container.modules%')
-        ->addArgument(new Reference('state'))
-        ->addArgument(new Reference('cache.bootstrap'));
-    }
+    // Register plugin managers.
+    $container->addCompilerPass(new PluginManagerPass());
   }
 
   /**
@@ -123,23 +98,23 @@ class CoreServiceProvider implements ServiceProviderInterface  {
         // @todo ensure garbage collection of expired files.
         // When in the installer, twig_cache must be FALSE until we know the
         // files folder is writable.
-        'cache' => drupal_installation_attempted() ? FALSE : settings()->get('twig_cache', TRUE),
-        'base_template_class' => 'Drupal\Core\Template\TwigTemplate',
+        'cache' => drupal_installation_attempted() ? FALSE : Settings::get('twig_cache', TRUE),
         // @todo Remove in followup issue
         // @see http://drupal.org/node/1712444.
         'autoescape' => FALSE,
-        // @todo Remove in followup issue
-        // @see http://drupal.org/node/1806538.
-        'strict_variables' => FALSE,
-        'debug' => settings()->get('twig_debug', FALSE),
-        'auto_reload' => settings()->get('twig_auto_reload', NULL),
+        'debug' => Settings::get('twig_debug', FALSE),
+        'auto_reload' => Settings::get('twig_auto_reload', NULL),
       ))
       ->addArgument(new Reference('module_handler'))
       ->addArgument(new Reference('theme_handler'))
       ->addMethodCall('addExtension', array(new Definition('Drupal\Core\Template\TwigExtension')))
       // @todo Figure out what to do about debugging functions.
       // @see http://drupal.org/node/1804998
-      ->addMethodCall('addExtension', array(new Definition('Twig_Extension_Debug')));
+      ->addMethodCall('addExtension', array(new Definition('Twig_Extension_Debug')))
+      ->addTag('service_collector', array(
+        'tag' => 'twig.extension',
+        'call' => 'addExtension',
+      ));
   }
 
   /**
@@ -167,6 +142,20 @@ class CoreServiceProvider implements ServiceProviderInterface  {
 
     $container->register('uuid', $uuid_class);
     return $uuid_class;
+  }
+
+  /**
+   * Registers services and event subscribers for a site under test.
+   */
+  protected function registerTest(ContainerBuilder $container) {
+    // Do nothing if we are not in a test environment.
+    if (!drupal_valid_test_ua()) {
+      return;
+    }
+    // Add the HTTP request subscriber to Guzzle.
+    $container
+      ->register('test.http_client.request_subscriber', 'Drupal\Core\Test\EventSubscriber\HttpRequestSubscriber')
+      ->addTag('http_client_subscriber');
   }
 
 }

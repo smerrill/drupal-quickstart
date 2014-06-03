@@ -63,9 +63,9 @@ use Symfony\Component\HttpFoundation\RedirectResponse;
  * @see update_menu()
  * @ingroup forms
  *
- * @deprecated Use \Drupal\update\Form\UpdateForm::reportUpdate(),
- *   \Drupal\update\Form\UpdateForm::moduleUpdate(), or
- *   \Drupal\update\Form\UpdateForm::moduleUpdate()
+ * @deprecated in Drupal 8.x-dev, will be removed before Drupal 8.0. Use
+ *   \Drupal\update\Form\UpdateForm::reportUpdate() or
+ *   \Drupal\update\Form\UpdateForm::moduleUpdate().
  */
 function update_manager_update_form($form, $form_state = array(), $context) {
   if (!_update_manager_check_backends($form, 'update')) {
@@ -82,7 +82,7 @@ function update_manager_update_form($form, $form_state = array(), $context) {
     return $form;
   }
 
-  $form['#attached']['library'][] = array('update', 'drupal.update.admin');
+  $form['#attached']['library'][] = 'update/drupal.update.admin';
 
   // This will be a nested array. The first key is the kind of project, which
   // can be either 'enabled', 'disabled', 'manual' (projects which require
@@ -178,9 +178,9 @@ function update_manager_update_form($form, $form_state = array(), $context) {
 
     if ($needs_manual) {
       // There are no checkboxes in the 'Manual updates' table so it will be
-      // rendered by theme('table'), not theme('tableselect'). Since the data
+      // rendered by _theme('table'), not _theme('tableselect'). Since the data
       // formats are incompatible, we convert now to the format expected by
-      // theme('table').
+      // _theme('table').
       unset($entry['#weight']);
       $attributes = $entry['#attributes'];
       unset($entry['#attributes']);
@@ -267,7 +267,7 @@ function update_manager_update_form($form, $form_state = array(), $context) {
     $prefix = '<h2>' . t('Manual updates required') . '</h2>';
     $prefix .= '<p>' . t('Updates of Drupal core are not supported at this time.') . '</p>';
     $form['manual_updates'] = array(
-      '#theme' => 'table',
+      '#type' => 'table',
       '#header' => $headers,
       '#rows' => $projects['manual'],
       '#prefix' => $prefix,
@@ -512,9 +512,9 @@ function update_manager_update_ready_form_submit($form, &$form_state) {
  * @see update_menu()
  * @ingroup forms
  *
- * @deprecated Use \Drupal\update\Form\UpdateForm::reportInstall(),
- *   \Drupal\update\Form\UpdateForm::moduleInstall(), or
- *   \Drupal\update\Form\UpdateForm::moduleInstall()
+ * @deprecated in Drupal 8.x-dev, will be removed before Drupal 8.0. Use
+ *   \Drupal\update\Form\UpdateForm::reportInstall() or
+ *   \Drupal\update\Form\UpdateForm::moduleInstall().
  */
 function update_manager_install_form($form, &$form_state, $context) {
   if (!_update_manager_check_backends($form, 'install')) {
@@ -659,16 +659,16 @@ function update_manager_install_form_submit($form, &$form_state) {
     $field = 'project_url';
     $local_cache = update_manager_file_get($form_state['values']['project_url']);
     if (!$local_cache) {
-      form_set_error($field, $form_state, t('Unable to retrieve Drupal project from %url.', array('%url' => $form_state['values']['project_url'])));
+      drupal_set_message(t('Unable to retrieve Drupal project from %url.', array('%url' => $form_state['values']['project_url'])), 'error');
       return;
     }
   }
   elseif ($_FILES['files']['name']['project_upload']) {
     $validators = array('file_validate_extensions' => array(archiver_get_extensions()));
     $field = 'project_upload';
-    if (!($finfo = file_save_upload($field, $form_state, $validators, NULL, 0, FILE_EXISTS_REPLACE))) {
-      // Failed to upload the file. file_save_upload() calls form_set_error() on
-      // failure.
+    if (!($finfo = file_save_upload($field, $validators, NULL, 0, FILE_EXISTS_REPLACE))) {
+      // Failed to upload the file. file_save_upload() calls
+      // drupal_set_message() on failure.
       return;
     }
     $local_cache = $finfo->getFileUri();
@@ -679,13 +679,13 @@ function update_manager_install_form_submit($form, &$form_state) {
     $archive = update_manager_archive_extract($local_cache, $directory);
   }
   catch (Exception $e) {
-    form_set_error($field, $form_state, $e->getMessage());
+    drupal_set_message($e->getMessage(), 'error');
     return;
   }
 
   $files = $archive->listContents();
   if (!$files) {
-    form_set_error($field, $form_state, t('Provided archive contains no files.'));
+    drupal_set_message(t('Provided archive contains no files.'), 'error');
     return;
   }
 
@@ -696,7 +696,7 @@ function update_manager_install_form_submit($form, &$form_state) {
 
   $archive_errors = update_manager_archive_verify($project, $local_cache, $directory);
   if (!empty($archive_errors)) {
-    form_set_error($field, $form_state, array_shift($archive_errors));
+    drupal_set_message(array_shift($archive_errors), 'error');
     // @todo: Fix me in D8: We need a way to set multiple errors on the same
     // form element and have all of them appear!
     if (!empty($archive_errors)) {
@@ -715,7 +715,7 @@ function update_manager_install_form_submit($form, &$form_state) {
     $updater = Updater::factory($project_location);
   }
   catch (Exception $e) {
-    form_set_error($field, $form_state, $e->getMessage());
+    drupal_set_message($e->getMessage(), 'error');
     return;
   }
 
@@ -723,16 +723,16 @@ function update_manager_install_form_submit($form, &$form_state) {
     $project_title = Updater::getProjectTitle($project_location);
   }
   catch (Exception $e) {
-    form_set_error($field, $form_state, $e->getMessage());
+    drupal_set_message($e->getMessage(), 'error');
     return;
   }
 
   if (!$project_title) {
-    form_set_error($field, $form_state, t('Unable to determine %project name.', array('%project' => $project)));
+    drupal_set_message(t('Unable to determine %project name.', array('%project' => $project)), 'error');
   }
 
   if ($updater->isInstalled()) {
-    form_set_error($field, $form_state, t('%project is already installed.', array('%project' => $project_title)));
+    drupal_set_message(t('%project is already installed.', array('%project' => $project_title)), 'error');
     return;
   }
 

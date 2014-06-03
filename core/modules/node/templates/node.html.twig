@@ -18,9 +18,10 @@
  * - label: The title of the node.
  * - content: All node items. Use {{ content }} to print them all,
  *   or print a subset such as {{ content.field_example }}. Use
- *   {% hide(content.field_example) %} to temporarily suppress the printing
- *   of a given element.
- * - user_picture: The node author's picture from user-picture.html.twig.
+ *   {{ content|without('field_example') %} to temporarily suppress the printing
+ *   of a given child element.
+ * - user_picture: The node author's information as loaded from the 'compact'
+ *   view mode for the user entity.
  * - date: Formatted creation date. Preprocess functions can reformat it by
  *   calling format_date() with the desired parameters on
  *   $variables['created'].
@@ -75,7 +76,7 @@
  * @ingroup themeable
  */
 #}
-<article id="node-{{ node.id }}" class="{{ attributes.class }} clearfix"{{ attributes }}>
+<article id="node-{{ node.id }}" class="{{ attributes.class }} clearfix"{{ attributes|without('id', 'class') }}>
 
   {{ title_prefix }}
   {% if not page %}
@@ -93,9 +94,7 @@
   {% endif %}
 
   <div{{ content_attributes }}>
-    {# We hide links now so that we can render them later. #}
-    {% hide(content.links) %}
-    {{ content }}
+    {{ content|without('links') }}
   </div>
 
   {{ content.links }}

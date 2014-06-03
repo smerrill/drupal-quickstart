@@ -8,14 +8,30 @@
 namespace Drupal\Core\Field;
 
 use Drupal\Core\Entity\EntityInterface;
-use Drupal\Core\TypedData\DataDefinition;
-use Drupal\Core\TypedData\ListDefinition;
+use Drupal\Core\Field\TypedData\FieldItemDataDefinition;
+use Drupal\Core\TypedData\ListDataDefinition;
 use Drupal\field\FieldException;
 
 /**
  * A class for defining entity fields.
  */
-class FieldDefinition extends ListDefinition implements FieldDefinitionInterface {
+class FieldDefinition extends ListDataDefinition implements FieldDefinitionInterface {
+
+  /**
+   * The field type.
+   *
+   * @var string
+   */
+  protected $type;
+
+  /**
+   * An array of field property definitions.
+   *
+   * @var \Drupal\Core\TypedData\DataDefinitionInterface[]
+   *
+   * @see \Drupal\Core\TypedData\ComplexDataDefinitionInterface::getPropertyDefinitions()
+   */
+  protected $propertyDefinitions;
 
   /**
    * The field schema.
@@ -39,15 +55,56 @@ class FieldDefinition extends ListDefinition implements FieldDefinitionInterface
    *   A new field definition object.
    */
   public static function create($type) {
+    $field_definition = new static(array());
+    $field_definition->type = $type;
+    $field_definition->itemDefinition = FieldItemDataDefinition::create($field_definition);
     // Create a definition for the items, and initialize it with the default
     // settings for the field type.
     // @todo Cleanup in https://drupal.org/node/2116341.
-    $item_definition = DataDefinition::create('field_item:' . $type);
     $field_type_manager = \Drupal::service('plugin.manager.field.field_type');
     $default_settings = $field_type_manager->getDefaultSettings($type) + $field_type_manager->getDefaultInstanceSettings($type);
-    $item_definition->setSettings($default_settings);
+    $field_definition->itemDefinition->setSettings($default_settings);
+    return $field_definition;
+  }
 
-    return new static(array(), $item_definition);
+  /**
+   * Creates a new field definition based upon a field storage definition.
+   *
+   * In cases where one needs a field storage definitions to act like full
+   * field definitions, this creates a new field definition based upon the
+   * (limited) information available. That way it is possible to use the field
+   * definition in places where a full field definition is required; e.g., with
+   * widgets or formatters.
+   *
+   * @param \Drupal\Core\Field\FieldStorageDefinitionInterface $definition
+   *   The field storage definition to base the new field definition upon.
+   *
+   * @return $this
+   */
+  public static function createFromFieldStorageDefinition(FieldStorageDefinitionInterface $definition) {
+    return static::create($definition->getType())
+      ->setCardinality($definition->getCardinality())
+      ->setConstraints($definition->getConstraints())
+      ->setCustomStorage($definition->hasCustomStorage())
+      ->setDescription($definition->getDescription())
+      ->setLabel($definition->getLabel())
+      ->setName($definition->getName())
+      ->setProvider($definition->getProvider())
+      ->setQueryable($definition->isQueryable())
+      ->setRequired($definition->isRequired())
+      ->setRevisionable($definition->isRevisionable())
+      ->setSettings($definition->getSettings())
+      ->setTargetEntityTypeId($definition->getTargetEntityTypeId())
+      ->setTranslatable($definition->isTranslatable());
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public static function createFromItemType($item_type) {
+    // The data type of a field item is in the form of "field_item:$field_type".
+    $parts = explode(':', $item_type, 2);
+    return static::create($parts[1]);
   }
 
   /**
@@ -75,10 +132,7 @@ class FieldDefinition extends ListDefinition implements FieldDefinitionInterface
    * {@inheritdoc}
    */
   public function getType() {
-    $data_type = $this->getItemDefinition()->getDataType();
-    // Cut of the leading field_item: prefix from 'field_item:FIELD_TYPE'.
-    $parts = explode(':', $data_type);
-    return $parts[1];
+    return $this->type;
   }
 
   /**
@@ -128,8 +182,21 @@ class FieldDefinition extends ListDefinition implements FieldDefinitionInterface
   /**
    * {@inheritdoc}
    */
-  public function getPropertyNames() {
-    return array_keys(\Drupal::typedDataManager()->create($this->getItemDefinition())->getPropertyDefinitions());
+  public function getProvider() {
+    return $this->definition['provider'];
+  }
+
+  /**
+   * Sets the name of the provider of this field.
+   *
+   * @param string $provider
+   *   The provider name to set.
+   *
+   * @return $this
+   */
+  public function setProvider($provider) {
+    $this->definition['provider'] = $provider;
+    return $this;
   }
 
   /**
@@ -145,7 +212,7 @@ class FieldDefinition extends ListDefinition implements FieldDefinitionInterface
    * @param bool $translatable
    *   Whether the field is translatable.
    *
-   * @return static
+   * @return $this
    *   The object itself for chaining.
    */
   public function setTranslatable($translatable) {
@@ -156,9 +223,46 @@ class FieldDefinition extends ListDefinition implements FieldDefinitionInterface
   /**
    * {@inheritdoc}
    */
+  public function isRevisionable() {
+    return !empty($this->definition['revisionable']);
+  }
+
+  /**
+   * Sets whether the field is revisionable.
+   *
+   * @param bool $revisionable
+   *   Whether the field is revisionable.
+   *
+   * @return $this
+   *   The object itself for chaining.
+   */
+  public function setRevisionable($revisionable) {
+    $this->definition['revisionable'] = $revisionable;
+    return $this;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
   public function getCardinality() {
     // @todo: Allow to control this.
     return isset($this->definition['cardinality']) ? $this->definition['cardinality'] : 1;
+  }
+
+  /**
+   * Sets the maximum number of items allowed for the field.
+   *
+   * Possible values are positive integers or
+   * FieldDefinitionInterface::CARDINALITY_UNLIMITED.
+   *
+   * @param int $cardinality
+   *  The field cardinality.
+   *
+   * @return $this
+   */
+  public function setCardinality($cardinality) {
+    $this->definition['cardinality'] = $cardinality;
+    return $this;
   }
 
   /**
@@ -274,15 +378,94 @@ class FieldDefinition extends ListDefinition implements FieldDefinitionInterface
   /**
    * {@inheritdoc}
    */
-  public function isConfigurable() {
-    return FALSE;
+  public function getDefaultValue(EntityInterface $entity) {
+    return $this->getSetting('default_value');
   }
 
   /**
    * {@inheritdoc}
    */
-  public function getDefaultValue(EntityInterface $entity) {
-    return $this->getSetting('default_value');
+  public function getPropertyDefinition($name) {
+    if (!isset($this->propertyDefinitions)) {
+      $this->getPropertyDefinitions();
+    }
+    if (isset($this->propertyDefinitions[$name])) {
+      return $this->propertyDefinitions[$name];
+    }
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getPropertyDefinitions() {
+    if (!isset($this->propertyDefinitions)) {
+      $class = $this->getFieldItemClass();
+      $this->propertyDefinitions = $class::propertyDefinitions($this);
+    }
+    return $this->propertyDefinitions;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getPropertyNames() {
+    return array_keys($this->getPropertyDefinitions());
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getMainPropertyName() {
+    $class = $this->getFieldItemClass();
+    return $class::mainPropertyName();
+  }
+
+  /**
+   * Helper to retrieve the field item class.
+   *
+   * @todo: Remove once getClass() adds in defaults. See
+   * https://drupal.org/node/2116341.
+   */
+  protected function getFieldItemClass() {
+    if ($class = $this->getItemDefinition()->getClass()) {
+      return $class;
+    }
+    else {
+      $type_definition = \Drupal::typedDataManager()
+        ->getDefinition($this->getItemDefinition()->getDataType());
+      return $type_definition['class'];
+    }
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function __sleep() {
+    // Do not serialize the statically cached property definitions.
+    $vars = get_object_vars($this);
+    unset($vars['propertyDefinitions']);
+    return array_keys($vars);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getTargetEntityTypeId() {
+    return isset($this->definition['entity_type']) ? $this->definition['entity_type'] : NULL;
+  }
+
+  /**
+   * Sets the ID of the type of the entity this field is attached to.
+   *
+   * @param string $entity_type_id
+   *   The name of the target entity type to set.
+   *
+   * @return static
+   *   The object itself for chaining.
+   */
+  public function setTargetEntityTypeId($entity_type_id) {
+    $this->definition['entity_type'] = $entity_type_id;
+    return $this;
   }
 
   /**
@@ -294,8 +477,12 @@ class FieldDefinition extends ListDefinition implements FieldDefinitionInterface
       $definition = \Drupal::service('plugin.manager.field.field_type')->getDefinition($this->getType());
       $class = $definition['class'];
       $schema = $class::schema($this);
-      // Fill in default values for optional entries.
-      $schema += array('indexes' => array(), 'foreign keys' => array());
+      // Fill in default values.
+      $schema += array(
+        'columns' => array(),
+        'indexes' => array(),
+        'foreign keys' => array(),
+      );
 
       // Check that the schema does not include forbidden column names.
       if (array_intersect(array_keys($schema['columns']), static::getReservedColumns())) {
@@ -333,6 +520,27 @@ class FieldDefinition extends ListDefinition implements FieldDefinitionInterface
    */
   public static function getReservedColumns() {
     return array('deleted');
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function hasCustomStorage() {
+    return !empty($this->definition['custom_storage']);
+  }
+
+  /**
+   * Sets the storage behavior for this field.
+   *
+   * @param bool $custom_storage
+   *   Pass FALSE if the storage takes care of storing the field,
+   *   TRUE otherwise.
+   *
+   * @return $this
+   */
+  public function setCustomStorage($custom_storage) {
+    $this->definition['custom_storage'] = $custom_storage;
+    return $this;
   }
 
 }

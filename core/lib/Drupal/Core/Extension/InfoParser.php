@@ -7,13 +7,12 @@
 
 namespace Drupal\Core\Extension;
 
+use Drupal\Component\Serialization\Yaml;
+use Drupal\Component\Serialization\Exception\InvalidDataTypeException;
 use Drupal\Component\Utility\String;
-use Symfony\Component\Yaml\Exception\ParseException;
-use Symfony\Component\Yaml\Parser;
-
 
 /**
- * Class that parses Drupal module's, theme's and profile's .info.yml files.
+ * Parses extension .info.yml files.
  */
 class InfoParser implements InfoParserInterface {
 
@@ -22,55 +21,35 @@ class InfoParser implements InfoParserInterface {
    *
    * @var array
    */
-  protected $parsedInfos = array();
-
-  /**
-   * Symfony YAML parser object.
-   *
-   * @var \Symfony\Component\Yaml\Parser
-   */
-  protected $parser;
+  protected static $parsedInfos = array();
 
   /**
    * {@inheritdoc}
    */
   public function parse($filename) {
-    if (!isset($this->parsedInfos[$filename])) {
+    if (!isset(static::$parsedInfos[$filename])) {
       if (!file_exists($filename)) {
-        $this->parsedInfos[$filename] = array();
+        static::$parsedInfos[$filename] = array();
       }
       else {
         try {
-          $this->parsedInfos[$filename] = $this->getParser()->parse(file_get_contents($filename));
+          static::$parsedInfos[$filename] = Yaml::decode(file_get_contents($filename));
         }
-        catch (ParseException $e) {
-          $message = String::format("Unable to parse !file. Parser error !error.", array('!file' => $filename, '!error' => $e->getMessage()));
-          throw new InfoParserException($message, $filename);
+        catch (InvalidDataTypeException $e) {
+          $message = String::format("Unable to parse !file: !error", array('!file' => $filename, '!error' => $e->getMessage()));
+          throw new InfoParserException($message);
         }
-        $missing_keys = array_diff($this->getRequiredKeys(), array_keys($this->parsedInfos[$filename]));
+        $missing_keys = array_diff($this->getRequiredKeys(), array_keys(static::$parsedInfos[$filename]));
         if (!empty($missing_keys)) {
           $message = format_plural(count($missing_keys), 'Missing required key (!missing_keys) in !file.', 'Missing required keys (!missing_keys) in !file.', array('!missing_keys' => implode(', ', $missing_keys), '!file' => $filename));
-          throw new InfoParserException($message, $filename);
+          throw new InfoParserException($message);
         }
-        if (isset($this->parsedInfos[$filename]['version']) && $this->parsedInfos[$filename]['version'] === 'VERSION') {
-          $this->parsedInfos[$filename]['version'] = \Drupal::VERSION;
+        if (isset(static::$parsedInfos[$filename]['version']) && static::$parsedInfos[$filename]['version'] === 'VERSION') {
+          static::$parsedInfos[$filename]['version'] = \Drupal::VERSION;
         }
       }
     }
-    return $this->parsedInfos[$filename];
-  }
-
-  /**
-   * Returns a parser for parsing .info.yml files.
-   *
-   * @return \Symfony\Component\Yaml\Parser
-   *   Symfony YAML parser object.
-   */
-  protected function getParser() {
-    if (!$this->parser) {
-      $this->parser = new Parser();
-    }
-    return $this->parser;
+    return static::$parsedInfos[$filename];
   }
 
   /**
@@ -80,7 +59,7 @@ class InfoParser implements InfoParserInterface {
    *   An array of required keys.
    */
   protected function getRequiredKeys() {
-    return array('name', 'type');
+    return array('type', 'core', 'name');
   }
 
 }

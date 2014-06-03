@@ -20,7 +20,7 @@ interface EntityInterface extends AccessibleInterface {
    * The UUID is guaranteed to be unique and can be used to identify an entity
    * across multiple systems.
    *
-   * @return string
+   * @return string|null
    *   The UUID of the entity, or NULL if the entity does not have one.
    */
   public function uuid();
@@ -48,7 +48,7 @@ interface EntityInterface extends AccessibleInterface {
    * Usually an entity is new if no ID exists for it yet. However, entities may
    * be enforced to be new with existing IDs too.
    *
-   * @return
+   * @return bool
    *   TRUE if the entity is new, or FALSE if the entity has already been saved.
    *
    * @see \Drupal\Core\Entity\EntityInterface::enforceIsNew()
@@ -65,12 +65,14 @@ interface EntityInterface extends AccessibleInterface {
    *   (optional) Whether the entity should be forced to be new. Defaults to
    *   TRUE.
    *
+   * @return self
+   *
    * @see \Drupal\Core\Entity\EntityInterface::isNew()
    */
   public function enforceIsNew($value = TRUE);
 
   /**
-   * Returns the type of the entity.
+   * Returns the ID of the type of the entity.
    *
    * @return string
    *   The entity type ID.
@@ -80,7 +82,7 @@ interface EntityInterface extends AccessibleInterface {
   /**
    * Returns the bundle of the entity.
    *
-   * @return
+   * @return string
    *   The bundle of the entity. Defaults to the entity type ID if the entity
    *   type does not make use of different bundles.
    */
@@ -89,7 +91,7 @@ interface EntityInterface extends AccessibleInterface {
   /**
    * Returns the label of the entity.
    *
-   * @return
+   * @return string|null
    *   The label of the entity, or NULL if there is no label defined.
    */
   public function label();
@@ -118,9 +120,7 @@ interface EntityInterface extends AccessibleInterface {
    * @param string $rel
    *   The link relationship type, for example: canonical or edit-form.
    *
-   * @return
-   *   An array containing the 'path' and 'options' keys used to build the URI
-   *   of the entity, and matching the signature of url().
+   * @return \Drupal\Core\Url
    */
   public function urlInfo($rel = 'canonical');
 
@@ -166,10 +166,44 @@ interface EntityInterface extends AccessibleInterface {
   /**
    * Returns a list of URI relationships supported by this entity.
    *
-   * @return array
+   * @return string[]
    *   An array of link relationships supported by this entity.
    */
   public function uriRelationships();
+
+  /**
+   * Loads an entity.
+   *
+   * @param mixed $id
+   *   The id of the entity to load.
+   *
+   * @return static
+   *   The entity object or NULL if there is no entity with the given ID.
+   */
+  public static function load($id);
+
+  /**
+   * Loads one or more entities.
+   *
+   * @param array $ids
+   *   An array of entity IDs, or NULL to load all entities.
+   *
+   * @return static[]
+   *   An array of entity objects indexed by their IDs.
+   */
+  public static function loadMultiple(array $ids = NULL);
+
+  /**
+   * Constructs a new entity object, without permanently saving it.
+   *
+   * @param array $values
+   *   (optional) An array of values to set, keyed by property name. If the
+   *   entity type has bundles, the bundle key has to be specified.
+   *
+   * @return static
+   *   The entity object.
+   */
+  public static function create(array $values = array());
 
   /**
    * Saves an entity permanently.
@@ -177,7 +211,7 @@ interface EntityInterface extends AccessibleInterface {
    * When saving existing entities, the entity is assumed to be complete,
    * partial updates of entities are not supported.
    *
-   * @return
+   * @return int
    *   Either SAVED_NEW or SAVED_UPDATED, depending on the operation performed.
    *
    * @throws \Drupal\Core\Entity\EntityStorageException
@@ -198,10 +232,10 @@ interface EntityInterface extends AccessibleInterface {
    *
    * Used before the entity is saved and before invoking the presave hook.
    *
-   * @param \Drupal\Core\Entity\EntityStorageControllerInterface $storage_controller
-   *   The entity storage controller object.
+   * @param \Drupal\Core\Entity\EntityStorageInterface $storage
+   *   The entity storage object.
    */
-  public function preSave(EntityStorageControllerInterface $storage_controller);
+  public function preSave(EntityStorageInterface $storage);
 
   /**
    * Acts on a saved entity before the insert or update hook is invoked.
@@ -209,74 +243,74 @@ interface EntityInterface extends AccessibleInterface {
    * Used after the entity is saved, but before invoking the insert or update
    * hook.
    *
-   * @param \Drupal\Core\Entity\EntityStorageControllerInterface $storage_controller
-   *   The entity storage controller object.
+   * @param \Drupal\Core\Entity\EntityStorageInterface $storage
+   *   The entity storage object.
    * @param bool $update
    *   TRUE if the entity has been updated, or FALSE if it has been inserted.
    */
-  public function postSave(EntityStorageControllerInterface $storage_controller, $update = TRUE);
+  public function postSave(EntityStorageInterface $storage, $update = TRUE);
 
   /**
    * Changes the values of an entity before it is created.
    *
    * Load defaults for example.
    *
-   * @param \Drupal\Core\Entity\EntityStorageControllerInterface $storage_controller
-   *   The entity storage controller object.
-   * @param array $values
+   * @param \Drupal\Core\Entity\EntityStorageInterface $storage
+   *   The entity storage object.
+   * @param mixed[] $values
    *   An array of values to set, keyed by property name. If the entity type has
    *   bundles the bundle key has to be specified.
    */
-  public static function preCreate(EntityStorageControllerInterface $storage_controller, array &$values);
+  public static function preCreate(EntityStorageInterface $storage, array &$values);
 
   /**
    * Acts on an entity after it is created but before hooks are invoked.
    *
-   * @param EntityStorageControllerInterface $storage_controller
-   *   The entity storage controller object.
+   * @param \Drupal\Core\Entity\EntityStorageInterface $storage
+   *   The entity storage object.
    */
-  public function postCreate(EntityStorageControllerInterface $storage_controller);
+  public function postCreate(EntityStorageInterface $storage);
 
   /**
    * Acts on entities before they are deleted and before hooks are invoked.
    *
    * Used before the entities are deleted and before invoking the delete hook.
    *
-   * @param EntityStorageControllerInterface $storage_controller
-   *   The entity storage controller object.
-   * @param array $entities
+   * @param \Drupal\Core\Entity\EntityStorageInterface $storage
+   *   The entity storage object.
+   * @param \Drupal\Core\Entity\EntityInterface[] $entities
    *   An array of entities.
    */
-  public static function preDelete(EntityStorageControllerInterface $storage_controller, array $entities);
+  public static function preDelete(EntityStorageInterface $storage, array $entities);
 
   /**
    * Acts on deleted entities before the delete hook is invoked.
    *
    * Used after the entities are deleted but before invoking the delete hook.
    *
-   * @param EntityStorageControllerInterface $storage_controller
-   *   The entity storage controller object.
-   * @param array $entities
+   * @param \Drupal\Core\Entity\EntityStorageInterface $storage
+   *   The entity storage object.
+   * @param \Drupal\Core\Entity\EntityInterface[] $entities
    *   An array of entities.
    */
-  public static function postDelete(EntityStorageControllerInterface $storage_controller, array $entities);
+  public static function postDelete(EntityStorageInterface $storage, array $entities);
 
   /**
    * Acts on loaded entities.
    *
-   * @param EntityStorageControllerInterface $storage_controller
-   *   The entity storage controller object.
-   * @param array $entities
+   * @param \Drupal\Core\Entity\EntityStorageInterface $storage
+   *   The entity storage object.
+   * @param \Drupal\Core\Entity\EntityInterface[] $entities
    *   An array of entities.
    */
-  public static function postLoad(EntityStorageControllerInterface $storage_controller, array &$entities);
+  public static function postLoad(EntityStorageInterface $storage, array &$entities);
 
   /**
    * Creates a duplicate of the entity.
    *
-   * @return \Drupal\Core\Entity\EntityInterface
-   *   A clone of the current entity with all identifiers unset, so saving
-   *   it inserts a new entity into the storage system.
+   * @return static
+   *   A clone of $this with all identifiers unset, so saving it inserts a new
+   *   entity into the storage system.
    */
   public function createDuplicate();
 
@@ -284,16 +318,63 @@ interface EntityInterface extends AccessibleInterface {
    * Returns the entity type definition.
    *
    * @return \Drupal\Core\Entity\EntityTypeInterface
-   *   Entity type definition.
+   *   The entity type definition.
    */
   public function getEntityType();
 
   /**
    * Returns a list of entities referenced by this entity.
    *
-   * @return array
+   * @return \Drupal\Core\Entity\EntityInterface[]
    *   An array of entities.
    */
   public function referencedEntities();
+
+  /**
+   * Returns the original ID.
+   *
+   * @return int|string|null
+   *   The original ID, or NULL if no ID was set or for entity types that do not
+   *   support renames.
+   */
+  public function getOriginalId();
+
+  /**
+   * Sets the original ID.
+   *
+   * @param int|string|null $id
+   *   The new ID to set as original ID. If the entity supports renames, setting
+   *   NULL will prevent an update from being considered a rename.
+   *
+   * @return $this
+   */
+  public function setOriginalId($id);
+
+  /**
+   * Returns an array of all property values.
+   *
+   * @return mixed[]
+   *   An array of property values, keyed by property name.
+   */
+  public function toArray();
+
+  /**
+   * The unique cache tag associated with this entity.
+   *
+   * @return array
+   *   An array of cache tags.
+   */
+  public function getCacheTag();
+
+  /**
+   * The list cache tags associated with this entity.
+   *
+   * Enables code listing entities of this type to ensure that newly created
+   * entities show up immediately.
+   *
+   * @return array
+   *   An array of cache tags.
+   */
+  public function getListCacheTags();
 
 }

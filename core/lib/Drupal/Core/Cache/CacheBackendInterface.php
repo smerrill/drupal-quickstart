@@ -14,67 +14,14 @@ namespace Drupal\Core\Cache;
  * Drupal\Core\Cache\DatabaseBackend provides the default implementation, which
  * can be consulted as an example.
  *
- * To make Drupal use your implementation for a certain cache bin, you have to
- * set a variable with the name of the cache bin as its key and the name of
- * your class as its value. For example, if your implementation of
- * Drupal\Core\Cache\CacheBackendInterface was called MyCustomCache, the
- * following line would make Drupal use it for the 'cache_page' bin:
- * @code
- *  $settings['cache_classes']['cache_page'] = 'MyCustomCache';
- * @endcode
- *
- * Additionally, you can register your cache implementation to be used by
- * default for all cache bins by setting the $settings['cache_classes'] variable and
- * changing the value of the 'cache' key to the name of your implementation of
- * the Drupal\Core\Cache\CacheBackendInterface, e.g.
- * @code
- *  $settings['cache_classes']['cache'] = 'MyCustomCache';
- * @endcode
- *
- * To implement a completely custom cache bin, use the same variable format:
- * @code
- *  $settings['cache_classes']['custom_bin'] = 'MyCustomCache';
- * @endcode
- * To access your custom cache bin, specify the name of the bin when storing
- * or retrieving cached data:
- * @code
- *  cache('custom_bin')->set($cid, $data, $expire);
- *  cache('custom_bin')->get($cid);
- * @endcode
- *
- * There are two ways to "remove" a cache item:
- * - Deletion (using delete(), deleteMultiple(), deleteTags() or deleteAll()):
- *   Permanently removes the item from the cache.
- * - Invalidation (using invalidate(), invalidateMultiple(), invalidateTags()
- *   or invalidateAll()): a "soft" delete that only marks the items as
- *   "invalid", meaning "not fresh" or "not fresh enough". Invalid items are
- *   not usually returned from the cache, so in most ways they behave as if they
- *   have been deleted. However, it is possible to retrieve the invalid entries,
- *   if they have not yet been permanently removed by the garbage collector, by
- *   passing TRUE as the second argument for get($cid, $allow_invalid).
- *
- * Cache items should be deleted if they are no longer considered useful. This
- * is relevant e.g. if the cache item contains references to data that has been
- * deleted. On the other hand, it may be relevant to just invalidate the item
- * if the cached data may be useful to some callers until the cache item has
- * been updated with fresh data. The fact that it was fresh a short while ago
- * may often be sufficient.
- *
- * Invalidation is particularly useful to protect against stampedes. Rather than
- * having multiple concurrent requests updating the same cache item when it
- * expires or is deleted, there can be one request updating the cache, while
- * the other requests can proceed using the stale value. As soon as the cache
- * item has been updated, all future requests will use the updated value.
- *
- * @see cache()
- * @see \Drupal\Core\Cache\DatabaseBackend
+ * @ingroup cache
  */
 interface CacheBackendInterface {
 
   /**
    * Indicates that the item should never be removed unless explicitly deleted.
    */
-  const CACHE_PERMANENT = 0;
+  const CACHE_PERMANENT = -1;
 
   /**
    * Returns data from the persistent cache.
@@ -121,6 +68,12 @@ interface CacheBackendInterface {
   /**
    * Stores data in the persistent cache.
    *
+   * Core cache implementations set the created time on cache item with
+   * microtime(TRUE) rather than REQUEST_TIME_FLOAT, because the created time
+   * of cache items should match when they are created, not when the request
+   * started. Apart from being more accurate, this increases the chance an
+   * item will legitimately be considered valid.
+   *
    * @param string $cid
    *   The cache ID of the data to store.
    * @param mixed $data
@@ -147,6 +100,26 @@ interface CacheBackendInterface {
    * @see \Drupal\Core\Cache\CacheBackendInterface::getMultiple()
    */
   public function set($cid, $data, $expire = Cache::PERMANENT, array $tags = array());
+
+  /**
+   * Store multiple items in the persistent cache.
+   *
+   * @param array $items
+   *   An array of cache items, keyed by cid. In the form:
+   *   @code
+   *   $items = array(
+   *     $cid => array(
+   *       // Required, will be automatically serialized if not a string.
+   *       'data' => $data,
+   *       // Optional, defaults to CacheBackendInterface::CACHE_PERMANENT.
+   *       'expire' => CacheBackendInterface::CACHE_PERMANENT,
+   *       // (optional) The cache tags for this item, see CacheBackendInterface::set().
+   *       'tags' => array(),
+   *     ),
+   *   );
+   *   @endcode
+   */
+  public function setMultiple(array $items);
 
   /**
    * Deletes an item from the cache.
@@ -290,15 +263,4 @@ interface CacheBackendInterface {
    * Remove a cache bin.
    */
   public function removeBin();
-
-  /**
-   * Checks if a cache bin is empty.
-   *
-   * A cache bin is considered empty if it does not contain any valid data for
-   * any cache ID.
-   *
-   * @return
-   *   TRUE if the cache bin specified is empty.
-   */
-  public function isEmpty();
 }

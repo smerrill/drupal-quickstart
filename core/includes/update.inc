@@ -9,11 +9,11 @@
  */
 
 use Drupal\Component\Graph\Graph;
-use Drupal\Component\Utility\Settings;
 use Drupal\Component\Utility\String;
 use Drupal\Core\Config\FileStorage;
 use Drupal\Core\Config\ConfigException;
 use Drupal\Core\DrupalKernel;
+use Drupal\Core\Page\DefaultHtmlPageRenderer;
 use Drupal\Core\Utility\Error;
 use Drupal\Component\Uuid\Uuid;
 use Drupal\Component\Utility\NestedArray;
@@ -23,21 +23,22 @@ use Symfony\Component\HttpFoundation\Request;
  * Disables any extensions that are incompatible with the current core version.
  */
 function update_fix_compatibility() {
+  $extension_config = \Drupal::config('core.extension');
+  $save = FALSE;
   foreach (array('module', 'theme') as $type) {
-    $config = \Drupal::config("system.$type");
-    $save = FALSE;
-    foreach ($config->get('enabled') as $name => $weight) {
+    foreach ($extension_config->get($type) as $name => $weight) {
       if (update_check_incompatibility($name, $type)) {
-        $config->clear("enabled.$name");
+        $extension_config->clear("$type.$name");
+        if ($type === 'theme') {
+          $extension_config->set("disabled.theme.$name", 0);
+        }
         $save = TRUE;
       }
     }
-    if ($save) {
-      if ($type == 'module') {
-        $config->set('enabled', module_config_sort($config->get('enabled')));
-      }
-      $config->save();
-    }
+  }
+  if ($save) {
+    $extension_config->set('module', module_config_sort($extension_config->get('module')));
+    $extension_config->save();
   }
 }
 
@@ -146,20 +147,15 @@ function update_check_requirements($skip_warnings = FALSE) {
   // If there are errors, always display them. If there are only warnings, skip
   // them if the caller has indicated they should be skipped.
   if ($severity == REQUIREMENT_ERROR || ($severity == REQUIREMENT_WARNING && !$skip_warnings)) {
-    update_task_list('requirements');
-    drupal_set_title('Requirements problem');
-    $status = array(
+    $regions['sidebar_first'] = update_task_list('requirements');
+    $status_report = array(
       '#theme' => 'status_report',
       '#requirements' => $requirements,
     );
-    $status_report = drupal_render($status);
-    $status_report .= 'Check the messages and <a href="' . check_url(drupal_requirements_url($severity)) . '">try again</a>.';
+    $status_report['#suffix'] = 'Check the messages and <a href="' . check_url(drupal_requirements_url($severity)) . '">try again</a>.';
+
     drupal_add_http_header('Content-Type', 'text/html; charset=utf-8');
-    $maintenance_page = array(
-      '#theme' => 'maintenance_page',
-      '#content' => $status_report,
-    );
-    print drupal_render($maintenance_page);
+    print DefaultHtmlPageRenderer::renderPage($status_report, 'Requirements problem', 'maintenance', $regions);
     exit();
   }
 }
@@ -426,15 +422,15 @@ function update_get_update_list() {
     // Otherwise, get the list of updates defined by this module.
     $updates = drupal_get_schema_versions($module);
     if ($updates !== FALSE) {
-      // module_invoke returns NULL for nonexisting hooks, so if no updates
-      // are removed, it will == 0.
-      $last_removed = module_invoke($module, 'update_last_removed');
+      // \Drupal::moduleHandler()->invoke() returns NULL for nonexisting hooks,
+      // so if no updates are removed, it will == 0.
+      $last_removed = \Drupal::moduleHandler()->invoke($module, 'update_last_removed');
       if ($schema_version < $last_removed) {
         $ret[$module]['warning'] = '<em>' . $module . '</em> module cannot be updated. Its schema version is ' . $schema_version . '. Updates up to and including ' . $last_removed . ' have been removed in this release. In order to update <em>' . $module . '</em> module, you will first <a href="http://drupal.org/upgrade">need to upgrade</a> to the last version in which these updates were available.';
         continue;
       }
 
-      $updates = drupal_map_assoc($updates);
+      $updates = array_combine($updates, $updates);
       foreach (array_keys($updates) as $update) {
         if ($update == \Drupal::CORE_MINIMUM_SCHEMA_VERSION) {
           $ret[$module]['warning'] = '<em>' . $module . '</em> module cannot be updated. It contains an update numbered as ' . \Drupal::CORE_MINIMUM_SCHEMA_VERSION . ' which is reserved for the earliest installation of a module in Drupal ' .  \Drupal::CORE_COMPATIBILITY . ', before any updates. In order to update <em>' . $module . '</em> module, you will need to install a version of the module with valid updates.';
@@ -821,11 +817,11 @@ function update_language_list($flags = Language::STATE_CONFIGURABLE) {
    $languages = array();
 
     // Fill in master language list based on current configuration.
-    $default = language_default();
+    $default = \Drupal::languageManager()->getDefaultLanguage();
     if (\Drupal::languageManager()->isMultilingual() || \Drupal::moduleHandler()->moduleExists('language')) {
       // Use language module configuration if available. We can not use
       // entity_load_multiple() because this breaks during updates.
-      $language_entities = config_get_storage_names_with_prefix('language.entity.');
+      $language_entities = \Drupal::configFactory()->listAll('language.entity.');
 
       // Initialize default property so callers have an easy reference and can
       // save the same object without data loss.
@@ -858,7 +854,7 @@ function update_language_list($flags = Language::STATE_CONFIGURABLE) {
 
   // Add the site's default language if flagged as allowed value.
   if ($flags & Language::STATE_SITE_DEFAULT) {
-    $default = isset($default) ? $default : language_default();
+    $default = isset($default) ? $default : \Drupal::languageManager()->getDefaultLanguage();
     // Rename the default language.
     $default->name = t("Site's default language (@lang_name)", array('@lang_name' => $default->name));
     $filtered_languages['site_default'] = $default;

@@ -15,6 +15,7 @@ namespace Drupal\Core\Cache;
  * Should be used for unit tests and specialist use-cases only, does not
  * store cached items between requests.
  *
+ * @ingroup cache
  */
 class MemoryBackend implements CacheBackendInterface {
 
@@ -103,6 +104,15 @@ class MemoryBackend implements CacheBackendInterface {
       'expire' => $expire,
       'tags' => $this->flattenTags($tags),
     );
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function setMultiple(array $items = array()) {
+    foreach ($items as $cid => $item) {
+      $this->set($cid, $item['data'], isset($item['expire']) ? $item['expire'] : CacheBackendInterface::CACHE_PERMANENT, isset($item['tags']) ? $item['tags'] : array());
+    }
   }
 
   /**
@@ -195,21 +205,14 @@ class MemoryBackend implements CacheBackendInterface {
     foreach ($tags as $namespace => $values) {
       if (is_array($values)) {
         foreach ($values as $value) {
-          $flat_tags["$namespace:$value"] = "$namespace:$value";
+          $flat_tags[] = "$namespace:$value";
         }
       }
       else {
-        $flat_tags["$namespace:$values"] = "$namespace:$values";
+        $flat_tags[] = "$namespace:$values";
       }
     }
     return $flat_tags;
-  }
-
-  /**
-   * Implements Drupal\Core\Cache\CacheBackendInterface::isEmpty().
-   */
-  public function isEmpty() {
-    return empty($this->cache);
   }
 
   /**
@@ -218,9 +221,9 @@ class MemoryBackend implements CacheBackendInterface {
   public function garbageCollection() {
   }
 
- /**
-  * {@inheritdoc}
-  */
+  /**
+   * {@inheritdoc}
+   */
   public function removeBin() {}
 
 }

@@ -19,6 +19,8 @@ namespace Drupal\Core\Cache;
  * volatile backend but found in the persistent one will be propagated back up
  * to ensure fast retrieval on the next request. On cache sets and deletes, both
  * backends will be invoked to ensure consistency.
+ *
+ * @ingroup cache
  */
 
 class BackendChain implements CacheBackendInterface {
@@ -130,6 +132,15 @@ class BackendChain implements CacheBackendInterface {
   }
 
   /**
+   * {@inheritdoc}
+   */
+  public function setMultiple(array $items) {
+    foreach ($this->backends as $backend) {
+      $backend->setMultiple($items);
+    }
+  }
+
+  /**
    * Implements Drupal\Core\Cache\CacheBackendInterface::delete().
    */
   public function delete($cid) {
@@ -208,19 +219,6 @@ class BackendChain implements CacheBackendInterface {
     foreach ($this->backends as $backend) {
       $backend->garbageCollection();
     }
-  }
-
-  /**
-   * Implements Drupal\Core\Cache\CacheBackendInterface::isEmpty().
-   */
-  public function isEmpty() {
-    foreach ($this->backends as $backend) {
-      if (!$backend->isEmpty()) {
-        return FALSE;
-      }
-    }
-
-    return TRUE;
   }
 
   /**

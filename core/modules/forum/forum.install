@@ -4,8 +4,7 @@
  * @file
  * Install, update, and uninstall functions for the Forum module.
  */
-
-use Drupal\Core\Language\Language;
+use Drupal\field\Entity\FieldConfig;
 
 /**
  * Implements hook_install().
@@ -18,85 +17,75 @@ function forum_install() {
   $locked['forum'] = 'forum';
   \Drupal::state()->set('node.type.locked', $locked);
 
-  // Create the 'taxonomy_forums' field if it doesn't already exist. If forum
-  // is being enabled at the same time as taxonomy after both modules have been
-  // enabled, the field might exist but still be marked inactive.
-  if (!field_info_field('node', 'taxonomy_forums')) {
-    entity_create('field_entity', array(
-      'name' => 'taxonomy_forums',
-      'entity_type' => 'node',
-      'type' => 'taxonomy_term_reference',
-      'settings' => array(
-        'allowed_values' => array(
-          array(
-            'vocabulary' => 'forums',
-            'parent' => 0,
+  if (!\Drupal::service('config.installer')->isSyncing()) {
+    // Create the 'taxonomy_forums' field if it doesn't already exist. If forum
+    // is being enabled at the same time as taxonomy after both modules have been
+    // enabled, the field might exist but still be marked inactive.
+    if (!FieldConfig::loadByName('node', 'taxonomy_forums')) {
+      entity_create('field_config', array(
+        'name' => 'taxonomy_forums',
+        'entity_type' => 'node',
+        'type' => 'taxonomy_term_reference',
+        'settings' => array(
+          'allowed_values' => array(
+            array(
+              'vocabulary' => 'forums',
+              'parent' => 0,
+            ),
           ),
         ),
-      ),
-    ))->save();
+      ))->save();
 
-    // Create a default forum so forum posts can be created.
-    $term = entity_create('taxonomy_term', array(
-      'name' => t('General discussion'),
-      'langcode' => language_default()->id,
-      'description' => '',
-      'parent' => array(0),
-      'vid' => 'forums',
-      'forum_container' => 0,
+      // Create a default forum so forum posts can be created.
+      $term = entity_create('taxonomy_term', array(
+        'name' => t('General discussion'),
+        'description' => '',
+        'parent' => array(0),
+        'vid' => 'forums',
+        'forum_container' => 0,
+      ));
+      $term->save();
+
+      // Create the instance on the bundle.
+      entity_create('field_instance_config', array(
+        'field_name' => 'taxonomy_forums',
+        'entity_type' => 'node',
+        'label' => 'Forums',
+        'bundle' => 'forum',
+        'required' => TRUE,
+      ))->save();
+
+      // Assign form display settings for the 'default' form mode.
+      entity_get_form_display('node', 'forum', 'default')
+        ->setComponent('taxonomy_forums', array(
+          'type' => 'options_select',
+        ))
+        ->save();
+
+      // Assign display settings for the 'default' and 'teaser' view modes.
+      entity_get_display('node', 'forum', 'default')
+        ->setComponent('taxonomy_forums', array(
+          'type' => 'taxonomy_term_reference_link',
+          'weight' => 10,
+        ))
+        ->save();
+
+      entity_get_display('node', 'forum', 'teaser')
+        ->setComponent('taxonomy_forums', array(
+          'type' => 'taxonomy_term_reference_link',
+          'weight' => 10,
+        ))
+        ->save();
+    }
+    // Add the comment field to the forum node type.
+    $fields = entity_load_multiple_by_properties('field_config', array(
+      'type' => 'comment',
+      'name' => 'comment_forum',
+      'include_deleted' => FALSE,
     ));
-    $term->save();
-
-    // Create the instance on the bundle.
-    entity_create('field_instance', array(
-      'field_name' => 'taxonomy_forums',
-      'entity_type' => 'node',
-      'label' => 'Forums',
-      'bundle' => 'forum',
-      'required' => TRUE,
-    ))->save();
-
-    // Assign form display settings for the 'default' form mode.
-    entity_get_form_display('node', 'forum', 'default')
-      ->setComponent('taxonomy_forums', array(
-        'type' => 'options_select',
-      ))
-      ->save();
-
-    // Assign display settings for the 'default' and 'teaser' view modes.
-    entity_get_display('node', 'forum', 'default')
-      ->setComponent('taxonomy_forums', array(
-        'type' => 'taxonomy_term_reference_link',
-        'weight' => 10,
-      ))
-      ->save();
-    entity_get_display('node', 'forum', 'teaser')
-      ->setComponent('taxonomy_forums', array(
-        'type' => 'taxonomy_term_reference_link',
-        'weight' => 10,
-      ))
-      ->save();
-  }
-  // Add the comment field to the forum node type.
-  $fields = entity_load_multiple_by_properties('field_entity', array(
-    'type' => 'comment',
-    'name' => 'comment_forum',
-    'include_deleted' => FALSE,
-  ));
-  if (empty($fields)) {
-    Drupal::service('comment.manager')->addDefaultField('node', 'forum', 'comment_forum', COMMENT_OPEN);
-  }
-}
-
-/**
- * Implements hook_module_preinstall().
- */
-function forum_module_preinstall($module) {
-  $list_boolean = \Drupal::service('plugin.manager.field.field_type')->getDefinition('list_boolean');
-  if (empty($list_boolean) && $module == 'forum') {
-    // Make sure that the list_boolean field type is available before our
-    // default config is installed.
-    field_info_cache_clear();
+    if (empty($fields)) {
+      Drupal::service('comment.manager')->addDefaultField('node', 'forum', 'comment_forum');
+    }
   }
 }
 
@@ -104,15 +93,15 @@ function forum_module_preinstall($module) {
  * Implements hook_uninstall().
  */
 function forum_uninstall() {
-  if ($field = field_info_field('node', 'taxonomy_forums')) {
+  if ($field = FieldConfig::loadByName('node', 'taxonomy_forums')) {
     $field->delete();
   }
 
-  if ($field = field_info_field('node', 'comment_forum')) {
+  if ($field = FieldConfig::loadByName('node', 'comment_forum')) {
     $field->delete();
   }
 
-  if ($field = field_info_field('taxonomy_term', 'forum_container')) {
+  if ($field = FieldConfig::loadByName('taxonomy_term', 'forum_container')) {
     $field->delete();
   }
 

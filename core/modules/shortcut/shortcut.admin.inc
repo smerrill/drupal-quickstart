@@ -4,6 +4,7 @@
  * @file
  * Administrative page callbacks for the shortcut module.
  */
+use Drupal\shortcut\Entity\ShortcutSet;
 
 /**
  * Form callback: builds the form for switching shortcut sets.
@@ -23,7 +24,8 @@
  * @see shortcut_set_switch_validate()
  * @see shortcut_set_switch_submit()
  *
- * @deprecated Use \Drupal\shortcut\Form\ShortcutForm::overview()
+ * @deprecated in Drupal 8.x-dev, will be removed before Drupal 8.0.
+ *   Use \Drupal\shortcut\Form\ShortcutForm::overview().
  */
 function shortcut_set_switch($form, &$form_state, $account = NULL) {
   $user = \Drupal::currentUser();
@@ -70,7 +72,7 @@ function shortcut_set_switch($form, &$form_state, $account = NULL) {
     $form['id'] = array(
       '#type' => 'machine_name',
       '#machine_name' => array(
-        'exists' => 'shortcut_set_load',
+        'exists' => '\Drupal\shortcut\Entity\ShortcutSet::load',
         'source' => array('label'),
         'replace_pattern' => '[^a-z0-9-]+',
         'replace' => '-',
@@ -91,7 +93,7 @@ function shortcut_set_switch($form, &$form_state, $account = NULL) {
     }
 
     $form['#attached'] = array(
-      'library' => array(array('shortcut', 'drupal.shortcut.admin')),
+      'library' => array('shortcut/drupal.shortcut.admin'),
     );
 
     $form['actions'] = array('#type' => 'actions');
@@ -117,7 +119,7 @@ function shortcut_set_switch_validate($form, &$form_state) {
   if ($form_state['values']['set'] == 'new') {
     // Check to prevent creating a shortcut set with an empty title.
     if (trim($form_state['values']['label']) == '') {
-      form_set_error('new', $form_state, t('The new set label is required.'));
+      form_set_error('label', $form_state, t('The new set label is required.'));
     }
     // Check to prevent a duplicate title.
     if (shortcut_set_title_exists($form_state['values']['label'])) {
@@ -135,8 +137,7 @@ function shortcut_set_switch_submit($form, &$form_state) {
 
   if ($form_state['values']['set'] == 'new') {
     // Save a new shortcut set with links copied from the user's default set.
-    $default_set = shortcut_default_set($account);
-    $set = entity_create('shortcut_set', array(
+    $set = ShortcutSet::create(array(
       'id' => $form_state['values']['id'],
       'label' => $form_state['values']['label'],
     ));
@@ -163,7 +164,7 @@ function shortcut_set_switch_submit($form, &$form_state) {
   }
   else {
     // Switch to a different shortcut set.
-    $set = shortcut_set_load($form_state['values']['set']);
+    $set = ShortcutSet::load($form_state['values']['set']);
     $replacements = array(
       '%user' => $account->getUsername(),
       '%set_name' => $set->label(),

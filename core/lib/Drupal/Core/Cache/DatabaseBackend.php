@@ -15,6 +15,8 @@ use Drupal\Core\Database\SchemaObjectExistsException;
  *
  * This is Drupal's default cache implementation. It uses the database to store
  * cached data. Each cache bin corresponds to a database table by the same name.
+ *
+ * @ingroup cache
  */
 class DatabaseBackend implements CacheBackendInterface {
 
@@ -40,11 +42,9 @@ class DatabaseBackend implements CacheBackendInterface {
    *   The cache bin for which the object is created.
    */
   public function __construct(Connection $connection, $bin) {
-    // All cache tables should be prefixed with 'cache_', except for the
-    // default 'cache' bin.
-    if ($bin != 'cache') {
-      $bin = 'cache_' . $bin;
-    }
+    // All cache tables should be prefixed with 'cache_'.
+    $bin = 'cache_' . $bin;
+
     $this->bin = $bin;
     $this->connection = $connection;
   }
@@ -164,10 +164,23 @@ class DatabaseBackend implements CacheBackendInterface {
    */
   protected function doSet($cid, $data, $expire, $tags) {
     $flat_tags = $this->flattenTags($tags);
+    $deleted_tags = &drupal_static('Drupal\Core\Cache\DatabaseBackend::deletedTags', array());
+    $invalidated_tags = &drupal_static('Drupal\Core\Cache\DatabaseBackend::invalidatedTags', array());
+    // Remove tags that were already deleted or invalidated during this request
+    // from the static caches so that another deletion or invalidation can
+    // occur.
+    foreach ($flat_tags as $tag) {
+      if (isset($deleted_tags[$tag])) {
+        unset($deleted_tags[$tag]);
+      }
+      if (isset($invalidated_tags[$tag])) {
+        unset($invalidated_tags[$tag]);
+      }
+    }
     $checksum = $this->checksumTags($flat_tags);
     $fields = array(
       'serialized' => 0,
-      'created' => REQUEST_TIME,
+      'created' => round(microtime(TRUE), 3),
       'expire' => $expire,
       'tags' => implode(' ', $flat_tags),
       'checksum_invalidations' => $checksum['invalidations'],
@@ -183,9 +196,81 @@ class DatabaseBackend implements CacheBackendInterface {
     }
 
     $this->connection->merge($this->bin)
-      ->key(array('cid' => $cid))
+      ->key('cid', $cid)
       ->fields($fields)
       ->execute();
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function setMultiple(array $items) {
+    $deleted_tags = &drupal_static('Drupal\Core\Cache\DatabaseBackend::deletedTags', array());
+    $invalidated_tags = &drupal_static('Drupal\Core\Cache\DatabaseBackend::invalidatedTags', array());
+
+    // Use a transaction so that the database can write the changes in a single
+    // commit.
+    $transaction = $this->connection->startTransaction();
+
+    try {
+      // Delete all items first so we can do one insert. Rather than mulitple
+      // merge queries.
+      $this->deleteMultiple(array_keys($items));
+
+      $query = $this->connection
+        ->insert($this->bin)
+        ->fields(array('cid', 'data', 'expire', 'created', 'serialized', 'tags', 'checksum_invalidations', 'checksum_deletions'));
+
+      foreach ($items as $cid => $item) {
+        $item += array(
+          'expire' => CacheBackendInterface::CACHE_PERMANENT,
+          'tags' => array(),
+        );
+
+        $flat_tags = $this->flattenTags($item['tags']);
+
+        // Remove tags that were already deleted or invalidated during this
+        // request from the static caches so that another deletion or
+        // invalidation can occur.
+        foreach ($flat_tags as $tag) {
+          if (isset($deleted_tags[$tag])) {
+            unset($deleted_tags[$tag]);
+          }
+          if (isset($invalidated_tags[$tag])) {
+            unset($invalidated_tags[$tag]);
+          }
+        }
+
+        $checksum = $this->checksumTags($flat_tags);
+
+        $fields = array(
+          'cid' => $cid,
+          'expire' => $item['expire'],
+          'created' => REQUEST_TIME,
+          'tags' => implode(' ', $flat_tags),
+          'checksum_invalidations' => $checksum['invalidations'],
+          'checksum_deletions' => $checksum['deletions'],
+        );
+
+        if (!is_string($item['data'])) {
+          $fields['data'] = serialize($item['data']);
+          $fields['serialized'] = 1;
+        }
+        else {
+          $fields['data'] = $item['data'];
+          $fields['serialized'] = 0;
+        }
+
+        $query->values($fields);
+      }
+
+      $query->execute();
+    }
+    catch (\Exception $e) {
+      $transaction->rollback();
+      // @todo Log something here or just re throw?
+      throw $e;
+    }
   }
 
   /**
@@ -211,7 +296,7 @@ class DatabaseBackend implements CacheBackendInterface {
     catch (\Exception $e) {
       // Create the cache table, which will be empty. This fixes cases during
       // core install where a cache table is cleared before it is set
-      // with {cache_block} and {cache_menu}.
+      // with {cache_render} and {cache_data}.
       if (!$this->ensureBinExists()) {
         $this->catchException($e);
       }
@@ -223,13 +308,19 @@ class DatabaseBackend implements CacheBackendInterface {
    */
   public function deleteTags(array $tags) {
     $tag_cache = &drupal_static('Drupal\Core\Cache\CacheBackendInterface::tagCache', array());
+    $deleted_tags = &drupal_static('Drupal\Core\Cache\DatabaseBackend::deletedTags', array());
     foreach ($this->flattenTags($tags) as $tag) {
+      // Only delete tags once per request unless they are written again.
+      if (isset($deleted_tags[$tag])) {
+        continue;
+      }
+      $deleted_tags[$tag] = TRUE;
       unset($tag_cache[$tag]);
       try {
         $this->connection->merge('cache_tags')
           ->insertFields(array('deletions' => 1))
           ->expression('deletions', 'deletions + 1')
-          ->key(array('tag' => $tag))
+          ->key('tag', $tag)
           ->execute();
       }
       catch (\Exception $e) {
@@ -248,7 +339,7 @@ class DatabaseBackend implements CacheBackendInterface {
     catch (\Exception $e) {
       // Create the cache table, which will be empty. This fixes cases during
       // core install where a cache table is cleared before it is set
-      // with {cache_block} and {cache_menu}.
+      // with {cache_render} and {cache_data}.
       if (!$this->ensureBinExists()) {
         $this->catchException($e);
       }
@@ -287,12 +378,18 @@ class DatabaseBackend implements CacheBackendInterface {
   public function invalidateTags(array $tags) {
     try {
       $tag_cache = &drupal_static('Drupal\Core\Cache\CacheBackendInterface::tagCache', array());
+      $invalidated_tags = &drupal_static('Drupal\Core\Cache\DatabaseBackend::invalidatedTags', array());
       foreach ($this->flattenTags($tags) as $tag) {
+        // Only invalidate tags once per request unless they are written again.
+        if (isset($invalidated_tags[$tag])) {
+          continue;
+        }
+        $invalidated_tags[$tag] = TRUE;
         unset($tag_cache[$tag]);
         $this->connection->merge('cache_tags')
           ->insertFields(array('invalidations' => 1))
           ->expression('invalidations', 'invalidations + 1')
-          ->key(array('tag' => $tag))
+          ->key('tag', $tag)
           ->execute();
       }
     }
@@ -397,24 +494,6 @@ class DatabaseBackend implements CacheBackendInterface {
   }
 
   /**
-   * Implements Drupal\Core\Cache\CacheBackendInterface::isEmpty().
-   */
-  public function isEmpty() {
-    $this->garbageCollection();
-    $query = $this->connection->select($this->bin);
-    $query->addExpression('1');
-    try {
-      $result = $query->range(0, 1)
-        ->execute()
-        ->fetchField();
-    }
-    catch (\Exception $e) {
-      $this->catchException($e);
-    }
-    return empty($result);
-  }
-
-  /**
    * {@inheritdoc}
    */
   public function removeBin() {
@@ -496,8 +575,10 @@ class DatabaseBackend implements CacheBackendInterface {
           'default' => 0,
         ),
         'created' => array(
-          'description' => 'A Unix timestamp indicating when the cache entry was created.',
-          'type' => 'int',
+          'description' => 'A timestamp with millisecond precision indicating when the cache entry was created.',
+          'type' => 'numeric',
+          'precision' => 14,
+          'scale' => 3,
           'not null' => TRUE,
           'default' => 0,
         ),

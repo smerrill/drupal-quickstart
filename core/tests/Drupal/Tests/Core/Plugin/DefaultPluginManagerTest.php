@@ -64,7 +64,58 @@ class DefaultPluginManagerTest extends UnitTestCase {
       ),
     );
 
-    $this->namespaces = new \ArrayObject(array('Drupal\plugin_test' => DRUPAL_ROOT . '/core/modules/system/tests/modules/plugin_test/lib'));
+    $this->namespaces = new \ArrayObject();
+    $this->namespaces['Drupal\plugin_test'] = DRUPAL_ROOT . '/core/modules/system/tests/modules/plugin_test/src';
+  }
+
+  /**
+   * Tests the plugin manager with a disabled module.
+   */
+  public function testDefaultPluginManagerWithDisabledModule() {
+    $definitions = $this->expectedDefinitions;
+    $definitions['cherry'] = array(
+      'id' => 'cherry',
+      'label' => 'Cherry',
+      'color' => 'red',
+      'class' => 'Drupal\plugin_test\Plugin\plugin_test\fruit\Cherry',
+      'provider' => 'disabled_module',
+    );
+
+    $module_handler = $this->getMock('Drupal\Core\Extension\ModuleHandlerInterface');
+
+    $module_handler->expects($this->once())
+      ->method('moduleExists')
+      ->with('disabled_module')
+      ->will($this->returnValue(FALSE));
+
+    $plugin_manager = new TestPluginManager($this->namespaces, $definitions, $module_handler, 'test_alter_hook');
+
+    $this->assertEmpty($plugin_manager->getDefinition('cherry', FALSE), 'Plugin information of a disabled module is not available');
+  }
+
+  /**
+   * Tests the plugin manager and object plugin definitions.
+   */
+  public function testDefaultPluginManagerWithObjects() {
+    $definitions = $this->expectedDefinitions;
+    $definitions['cherry'] = (object) array(
+      'id' => 'cherry',
+      'label' => 'Cherry',
+      'color' => 'red',
+      'class' => 'Drupal\plugin_test\Plugin\plugin_test\fruit\Cherry',
+      'provider' => 'disabled_module',
+    );
+
+    $module_handler = $this->getMock('Drupal\Core\Extension\ModuleHandlerInterface');
+
+    $module_handler->expects($this->once())
+      ->method('moduleExists')
+      ->with('disabled_module')
+      ->will($this->returnValue(FALSE));
+
+    $plugin_manager = new TestPluginManager($this->namespaces, $definitions, $module_handler, 'test_alter_hook');
+
+    $this->assertEmpty($plugin_manager->getDefinition('cherry', FALSE), 'Plugin information is available');
   }
 
   /**
@@ -80,7 +131,9 @@ class DefaultPluginManagerTest extends UnitTestCase {
    * Tests the plugin manager with no cache and altering.
    */
   public function testDefaultPluginManagerWithAlter() {
-    $module_handler = $this->getMock('Drupal\Core\Extension\ModuleHandler');
+    $module_handler = $this->getMockBuilder('Drupal\Core\Extension\ModuleHandler')
+      ->disableOriginalConstructor()
+      ->getMock();
 
     // Configure the stub.
     $alter_hook_name = $this->randomName();
@@ -187,4 +240,8 @@ class DefaultPluginManagerTest extends UnitTestCase {
     $plugin_manager->clearCachedDefinitions();
   }
 
+}
+
+if (!defined('DRUPAL_ROOT')) {
+  define('DRUPAL_ROOT', dirname(dirname(substr(__DIR__, 0, -strlen(__NAMESPACE__)))));
 }

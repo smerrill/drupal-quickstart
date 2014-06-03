@@ -5,8 +5,8 @@
  * Provide views data for taxonomy.module.
  */
 
-use Drupal\Core\Entity\FieldableDatabaseStorageController;
-use Drupal\field\FieldInterface;
+use Drupal\Core\Entity\ContentEntityDatabaseStorage;
+use Drupal\field\FieldConfigInterface;
 
 /**
  * Implements hook_views_data().
@@ -338,6 +338,7 @@ function taxonomy_views_data() {
       'base' => 'taxonomy_term_data',
       'field' => 'parent',
       'label' => t('Parent'),
+      'id' => 'standard',
     ),
     'filter' => array(
       'help' => t('Filter the results of "Taxonomy: Term" by the parent pid.'),
@@ -404,7 +405,7 @@ function taxonomy_views_data_alter(&$data) {
  *
  * @see field_views_field_default_views_data()
  */
-function taxonomy_field_views_data(FieldInterface $field) {
+function taxonomy_field_views_data(FieldConfigInterface $field) {
   $data = field_views_field_default_views_data($field);
   foreach ($data as $table_name => $table_data) {
     foreach ($table_data as $field_name => $field_data) {
@@ -434,24 +435,24 @@ function taxonomy_field_views_data(FieldInterface $field) {
  *
  * Views integration to provide reverse relationships on term references.
  */
-function taxonomy_field_views_data_views_data_alter(array &$data, FieldInterface $field) {
+function taxonomy_field_views_data_views_data_alter(array &$data, FieldConfigInterface $field) {
   $field_name = $field->getName();
-  $entity_type = $field->entity_type;
-  $entity_info = \Drupal::entityManager()->getDefinition($entity_type);
-  $pseudo_field_name = 'reverse_' . $field_name . '_' . $entity_type;
+  $entity_type_id = $field->entity_type;
+  $entity_type = \Drupal::entityManager()->getDefinition($entity_type_id);
+  $pseudo_field_name = 'reverse_' . $field_name . '_' . $entity_type_id;
 
-  list($label) = field_views_field_label($entity_type, $field_name);
+  list($label) = field_views_field_label($entity_type_id, $field_name);
 
   $data['taxonomy_term_data'][$pseudo_field_name]['relationship'] = array(
-    'title' => t('@entity using @field', array('@entity' => $entity_info->getLabel(), '@field' => $label)),
-    'help' => t('Relate each @entity with a @field set to the term.', array('@entity' => $entity_info->getLabel(), '@field' => $label)),
+    'title' => t('@entity using @field', array('@entity' => $entity_type->getLabel(), '@field' => $label)),
+    'help' => t('Relate each @entity with a @field set to the term.', array('@entity' => $entity_type->getLabel(), '@field' => $label)),
     'id' => 'entity_reverse',
     'field_name' => $field_name,
-    'entity_type' => $entity_type,
-    'field table' => FieldableDatabaseStorageController::_fieldTableName($field),
+    'entity_type' => $entity_type_id,
+    'field table' => ContentEntityDatabaseStorage::_fieldTableName($field),
     'field field' => $field_name . '_target_id',
-    'base' => $entity_info->getBaseTable(),
-    'base field' => $entity_info->getKey('id'),
+    'base' => $entity_type->getBaseTable(),
+    'base field' => $entity_type->getKey('id'),
     'label' => t('!field_name', array('!field_name' => $field_name)),
     'join_extra' => array(
       0 => array(

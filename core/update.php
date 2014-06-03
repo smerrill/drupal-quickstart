@@ -14,8 +14,9 @@
  * back to its original state!
  */
 
-use Drupal\Component\Utility\Settings;
 use Drupal\Core\DrupalKernel;
+use Drupal\Core\Page\DefaultHtmlPageRenderer;
+use Drupal\Core\Site\Settings;
 use Drupal\Core\Update\Form\UpdateScriptSelectionForm;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -30,8 +31,8 @@ require_once __DIR__ . '/vendor/autoload.php';
 // The minimum version is specified explicitly, as DRUPAL_MINIMUM_PHP is not
 // yet available. It is defined in bootstrap.inc, but it is not possible to
 // load that file yet as it would cause a fatal error on older versions of PHP.
-if (version_compare(PHP_VERSION, '5.3.10') < 0) {
-  print 'Your PHP installation is too old. Drupal requires at least PHP 5.3.10. See the <a href="http://drupal.org/requirements">system requirements</a> page for more information.';
+if (version_compare(PHP_VERSION, '5.4.2') < 0) {
+  print 'Your PHP installation is too old. Drupal requires at least PHP 5.4.2. See the <a href="http://drupal.org/requirements">system requirements</a> page for more information.';
   exit;
 }
 
@@ -52,15 +53,12 @@ define('MAINTENANCE_MODE', 'update');
  */
 function update_selection_page() {
   // Make sure there is no stale theme registry.
-  cache()->deleteAll();
+  \Drupal::cache()->deleteAll();
 
-  drupal_set_title('Drupal database update');
-  $elements = \Drupal::formBuilder()->getForm('Drupal\Core\Update\Form\UpdateScriptSelectionForm');
-  $output = drupal_render($elements);
+  $build = \Drupal::formBuilder()->getForm('Drupal\Core\Update\Form\UpdateScriptSelectionForm');
+  $build['#title'] = 'Drupal database update';
 
-  update_task_list('select');
-
-  return $output;
+  return $build;
 }
 
 /**
@@ -98,9 +96,6 @@ function update_flush_all_caches() {
  * Displays results of the update script with any accompanying errors.
  */
 function update_results_page() {
-  drupal_set_title('Drupal database update');
-
-  update_task_list();
   // Report end result.
   if (\Drupal::moduleHandler()->moduleExists('dblog') && user_access('access site reports')) {
     $log_message = ' All errors have been <a href="' . base_path() . '?q=admin/reports/dblog">logged</a>.';
@@ -122,7 +117,7 @@ function update_results_page() {
     $output .= '</p>';
   }
 
-  if (settings()->get('update_free_access')) {
+  if (Settings::get('update_free_access')) {
     $output .= "<p><strong>Reminder: don't forget to set the <code>\$settings['update_free_access']</code> value in your <code>settings.php</code> file back to <code>FALSE</code>.</strong></p>";
   }
 
@@ -178,7 +173,11 @@ function update_results_page() {
   unset($_SESSION['update_results']);
   unset($_SESSION['update_success']);
 
-  return $output;
+  $build = array(
+    '#title' => 'Drupal database update',
+    '#markup' => $output,
+  );
+  return $build;
 }
 
 /**
@@ -198,8 +197,6 @@ function update_info_page() {
   $keyvalue->get('update')->deleteAll();
   $keyvalue->get('update_available_release')->deleteAll();
 
-  update_task_list('info');
-  drupal_set_title('Drupal database update');
   $token = drupal_get_token('update');
   $output = '<p>Use this utility to update your database whenever a new release of Drupal or a module is installed.</p><p>For more detailed information, see the <a href="http://drupal.org/upgrade">upgrading handbook</a>. If you are unsure what these terms mean you should probably contact your hosting provider.</p>';
   $output .= "<ol>\n";
@@ -210,9 +207,14 @@ function update_info_page() {
   $output .= "</ol>\n";
   $output .= "<p>When you have performed the steps above, you may proceed.</p>\n";
   $form_action = check_url(drupal_current_script_url(array('op' => 'selection', 'token' => $token)));
-  $output .= '<form method="post" action="' . $form_action . '"><p><input type="submit" value="Continue" class="form-submit button button-primary" /></p></form>';
+  $output .= '<form method="post" action="' . $form_action . '"><div class="form-actions form-wrapper" id="edit-actions"><input type="submit" value="Continue" class="button button--primary form-submit" /></div></form>';
   $output .= "\n";
-  return $output;
+
+  $build = array(
+    '#title' => 'Drupal database update',
+    '#markup' => $output,
+  );
+  return $build;
 }
 
 /**
@@ -224,15 +226,20 @@ function update_info_page() {
 function update_access_denied_page() {
   drupal_add_http_header('Status', '403 Forbidden');
   header(\Drupal::request()->server->get('SERVER_PROTOCOL') . ' 403 Forbidden');
-  watchdog('access denied', 'update.php', NULL, WATCHDOG_WARNING);
-  drupal_set_title('Access denied');
-  return '<p>Access denied. You are not authorized to access this page. Log in using either an account with the <em>administer software updates</em> permission or the site maintenance account (the account you created during installation). If you cannot log in, you will have to edit <code>settings.php</code> to bypass this access check. To do this:</p>
+  watchdog('access denied', 'update.php', array(), WATCHDOG_WARNING);
+  $output = '<p>Access denied. You are not authorized to access this page. Log in using either an account with the <em>administer software updates</em> permission or the site maintenance account (the account you created during installation). If you cannot log in, you will have to edit <code>settings.php</code> to bypass this access check. To do this:</p>
 <ol>
  <li>With a text editor find the settings.php file on your system. From the main Drupal directory that you installed all the files into, go to <code>sites/your_site_name</code> if such directory exists, or else to <code>sites/default</code> which applies otherwise.</li>
  <li>There is a line inside your settings.php file that says <code>$settings[\'update_free_access\'] = FALSE;</code>. Change it to <code>$settings[\'update_free_access\'] = TRUE;</code>.</li>
  <li>As soon as the update.php script is done, you must change the settings.php file back to its original form with <code>$settings[\'update_free_access\'] = FALSE;</code>.</li>
  <li>To avoid having this problem in the future, remember to log in to your website using either an account with the <em>administer software updates</em> permission or the site maintenance account (the account you created during installation) before you backup your database at the beginning of the update process.</li>
 </ol>';
+
+  $build = array(
+    '#title' => 'Access denied',
+    '#markup' => $output,
+  );
+  return $build;
 }
 
 /**
@@ -245,17 +252,16 @@ function update_access_allowed() {
   $user = \Drupal::currentUser();
 
   // Allow the global variable in settings.php to override the access check.
-  if (settings()->get('update_free_access')) {
+  if (Settings::get('update_free_access')) {
     return TRUE;
   }
   // Calls to user_access() might fail during the Drupal 6 to 7 update process,
   // so we fall back on requiring that the user be logged in as user #1.
   try {
     $module_handler = \Drupal::moduleHandler();
-    $module_filenames = $module_handler->getModuleList();
-    $module_filenames['user'] = 'core/modules/user/user.module';
-    $module_handler->setModuleList($module_filenames);
+    $module_handler->addModule('user', 'core/modules/user');
     $module_handler->reload();
+    $module_filenames = $module_handler->getModuleList();
     \Drupal::service('kernel')->updateModules($module_filenames, $module_filenames);
     return user_access('administer software updates');
   }
@@ -282,8 +288,7 @@ function update_task_list($active = NULL) {
     '#items' => $tasks,
     '#active' => $active,
   );
-
-  drupal_add_region_content('sidebar_first', drupal_render($task_list));
+  return $task_list;
 }
 
 // Some unavoidable errors happen because the database is not yet up-to-date.
@@ -325,18 +330,19 @@ $GLOBALS['conf']['update_service_provider_overrides'] = TRUE;
 // below.
 require_once __DIR__ . '/includes/module.inc';
 
-$settings = settings()->getAll();
+$settings = Settings::getAll();
 new Settings($settings);
 $kernel = new DrupalKernel('update', drupal_classloader(), FALSE);
 $kernel->boot();
 $request = Request::createFromGlobals();
-\Drupal::getContainer()->set('request', $request);
+$container = \Drupal::getContainer();
+$container->set('request', $request);
+$container->get('request_stack')->push($request);
 
 // Determine if the current user has access to run update.php.
 drupal_bootstrap(DRUPAL_BOOTSTRAP_PAGE_CACHE);
 
-require_once DRUPAL_ROOT . '/' . settings()->get('session_inc', 'core/includes/session.inc');
-drupal_session_initialize();
+\Drupal::service('session_manager')->initialize();
 
 // Ensure that URLs generated for the home and admin pages don't have 'update.php'
 // in them.
@@ -359,9 +365,6 @@ if (is_null($op) && update_access_allowed()) {
   require_once __DIR__ . '/includes/install.inc';
   require_once DRUPAL_ROOT . '/core/modules/system/system.install';
 
-  // Set up $language, since the installer components require it.
-  drupal_language_initialize();
-
   // Set up theme system for the maintenance page.
   drupal_maintenance_theme();
 
@@ -382,6 +385,7 @@ drupal_maintenance_theme();
 // not passed through the error handler) will cause a message to be printed.
 ini_set('display_errors', TRUE);
 
+$regions = array();
 
 // Only proceed with updates if the user is allowed to run them.
 if (update_access_allowed()) {
@@ -406,6 +410,7 @@ if (update_access_allowed()) {
     case 'selection':
       $token = $request->query->get('token');
       if (isset($token) && drupal_valid_token($token, 'update')) {
+        $regions['sidebar_first'] = update_task_list('select');
         $output = update_selection_page();
         break;
       }
@@ -413,6 +418,7 @@ if (update_access_allowed()) {
     case 'Apply pending updates':
       $token = $request->query->get('token');
       if (isset($token) && drupal_valid_token($token, 'update')) {
+        $regions['sidebar_first'] = update_task_list('run');
         // Generate absolute URLs for the batch processing (using $base_root),
         // since the batch API will pass them to url() which does not handle
         // update.php correctly by default.
@@ -423,16 +429,18 @@ if (update_access_allowed()) {
       }
 
     case 'info':
+      $regions['sidebar_first'] = update_task_list('info');
       $output = update_info_page();
       break;
 
     case 'results':
+      $regions['sidebar_first'] = update_task_list();
       $output = update_results_page();
       break;
 
     // Regular batch ops : defer to batch processing API.
     default:
-      update_task_list('run');
+      $regions['sidebar_first'] = update_task_list('run');
       $output = _batch_page($request);
       break;
   }
@@ -442,7 +450,7 @@ else {
 }
 if (isset($output) && $output) {
   // Explicitly start a session so that the update.php token will be accepted.
-  drupal_session_start();
+  \Drupal::service('session_manager')->start();
   // We defer the display of messages until all updates are done.
   $progress_page = ($batch = batch_get()) && isset($batch['running']);
   if ($output instanceof Response) {
@@ -450,11 +458,8 @@ if (isset($output) && $output) {
   }
   else {
     drupal_add_http_header('Content-Type', 'text/html; charset=utf-8');
-    $maintenance_page = array(
-      '#theme' => 'maintenance_page',
-      '#content' => $output,
+    print DefaultHtmlPageRenderer::renderPage($output, $output['#title'], 'maintenance', $regions + array(
       '#show_messages' => !$progress_page,
-    );
-    print drupal_render($maintenance_page);
+    ));
   }
 }

@@ -27,6 +27,14 @@
 }
 
 /**
+ * Unboxed fieldsets for grouping form elements.
+ */
+.fieldgroup {
+  border-width: 0;
+  padding: 0;
+}
+
+/**
  * Collapsible details.
  *
  * @see collapse.js
@@ -71,6 +79,18 @@
 body.drag {
   cursor: move;
 }
+tr.region-title {
+  font-weight: bold;
+}
+tr.region-message {
+  color: #999;
+}
+tr.region-populated {
+  display: none;
+}
+tr.add-new .tabledrag-changed {
+  display: none;
+}
 .draggable a.tabledrag-handle {
   cursor: move;
   float: left; /* LTR */
@@ -97,6 +117,14 @@ a.tabledrag-handle .handle {
 .no-svg a.tabledrag-handle .handle {
   background-image: url(../../../misc/icons/787878/move.png);
 }
+a.tabledrag-handle:hover .handle,
+a.tabledrag-handle:focus .handle {
+  background-image: url(../../../misc/icons/000000/move.svg);
+}
+.no-svg a.tabledrag-handle:hover .handle,
+.no-svg a.tabledrag-handle:focus .handle {
+  background-image: url(../../../misc/icons/000000/move.png);
+}
 .touch .draggable td {
   padding: 0 10px;
 }
@@ -114,10 +142,6 @@ a.tabledrag-handle .handle {
 }
 .touch .draggable.drag a.tabledrag-handle .handle {
   background-position: 50% -32px;
-}
-.no-touch a.tabledrag-handle:hover .handle,
-.no-touch a.tabledrag-handle:focus .handle {
-  background-position: 6px -11px;
 }
 div.indentation {
   float: left; /* LTR */
@@ -182,7 +206,8 @@ table.sticky-header {
 .progress__bar {
   background-color: #000;
   height: 1.5em;
-  width: 3%;
+  min-width: 3%;
+  max-width: 100%;
 }
 .progress__description,
 .progress__percentage {

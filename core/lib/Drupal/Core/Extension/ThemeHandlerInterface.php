@@ -17,28 +17,35 @@ interface ThemeHandlerInterface {
    *
    * @param array $theme_list
    *   An array of theme names.
+   * @param bool $enable_dependencies
+   *   (optional) If TRUE, dependencies will automatically be installed in the
+   *   correct order. This incurs a significant performance cost, so use FALSE
+   *   if you know $theme_list is already complete and in the correct order.
+   *
+   * @return bool
+   *   Whether any of the given themes have been enabled.
    *
    * @throws \Drupal\Core\Extension\ExtensionNameLengthException
    *   Thrown when the theme name is to long
    */
-  public function enable(array $theme_list);
+  public function enable(array $theme_list, $enable_dependencies = TRUE);
 
   /**
    * Disables a given list of themes.
    *
    * @param array $theme_list
    *   An array of theme names.
+   *
+   * @return bool
+   *   Whether any of the given themes have been disabled.
    */
   public function disable(array $theme_list);
 
   /**
-   * Returns a list of all currently available themes.
+   * Returns a list of currently enabled themes.
    *
-   * Retrieved from the database, if available and the site is not in
-   * maintenance mode; otherwise compiled freshly from the filesystem.
-   *
-   * @return array
-   *   An associative array of the currently available themes. The keys are the
+   * @return \Drupal\Core\Extension\Extension[]
+   *   An associative array of the currently enabled themes. The keys are the
    *   themes' machine names and the values are objects having the following
    *   properties:
    *   - filename: The filepath and name of the .info.yml file.
@@ -76,15 +83,23 @@ interface ThemeHandlerInterface {
   public function listInfo();
 
   /**
+   * Refreshes the theme info data of currently enabled themes.
+   *
+   * Modules can alter theme info, so this is typically called after a module
+   * has been installed or uninstalled.
+   */
+  public function refreshInfo();
+
+  /**
    * Resets the internal state of the theme handler.
    */
   public function reset();
 
   /**
-   * Helper function to scan and collect theme .info.yml data and their engines.
+   * Scans and collects theme extension data and their engines.
    *
-   * @return array
-   *   An associative array of themes information.
+   * @return \Drupal\Core\Extension\Extension[]
+   *   An associative array of theme extensions.
    */
   public function rebuildThemeData();
 
@@ -94,7 +109,7 @@ interface ThemeHandlerInterface {
    * Themes can inherit templates and function implementations from earlier
    * themes.
    *
-   * @param array $themes
+   * @param \Drupal\Core\Extension\Extension[] $themes
    *   An array of available themes.
    * @param string $theme
    *   The name of the theme whose base we are looking for.
@@ -104,5 +119,16 @@ interface ThemeHandlerInterface {
    *   value will be NULL if an error occurred.
    */
   public function getBaseThemes(array $themes, $theme);
+
+  /**
+   * Gets the human readable name of a given theme.
+   *
+   * @param string $theme
+   *   The machine name of the theme which title should be shown.
+   *
+   * @return string
+   *   Returns the human readable name of the theme.
+   */
+  public function getName($theme);
 
 }

@@ -62,7 +62,6 @@ display:
           grouping: {  }
           row_class: ''
           default_row_class: true
-          row_class_special: true
           uses_fields: false
       row:
         type: fields
@@ -169,5 +168,4 @@ label: test_filter_taxonomy_index_tid
 module: views
 id: test_filter_taxonomy_index_tid
 tag: ''
-uuid: b8bb8999-3e2c-4170-9500-ebafe26e5a78
 langcode: en

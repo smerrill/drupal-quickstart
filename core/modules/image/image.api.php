@@ -35,9 +35,9 @@ function hook_image_effect_info_alter(&$effects) {
  */
 function hook_image_style_flush($style) {
   // Empty cached data that contains information about the style.
-  cache('mymodule')->deleteAll();
+  \Drupal::cache('mymodule')->deleteAll();
 }
 
- /**
-  * @} End of "addtogroup hooks".
-  */
+/**
+ * @} End of "addtogroup hooks".
+ */

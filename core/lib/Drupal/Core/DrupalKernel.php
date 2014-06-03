@@ -7,12 +7,14 @@
 
 namespace Drupal\Core;
 
-use Drupal\Component\PhpStorage\PhpStorageFactory;
+use Drupal\Core\PhpStorage\PhpStorageFactory;
 use Drupal\Core\Config\BootstrapConfigStorageFactory;
+use Drupal\Core\Config\NullStorage;
 use Drupal\Core\CoreServiceProvider;
 use Drupal\Core\DependencyInjection\ContainerBuilder;
 use Drupal\Core\DependencyInjection\ServiceProviderInterface;
 use Drupal\Core\DependencyInjection\YamlFileLoader;
+use Drupal\Core\Extension\ExtensionDiscovery;
 use Drupal\Core\Language\Language;
 use Symfony\Component\Config\Loader\LoaderInterface;
 use Symfony\Component\DependencyInjection\ParameterBag\ParameterBag;
@@ -80,12 +82,9 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
   protected $newModuleList;
 
   /**
-   * An array of module data objects.
+   * List of available modules and installation profiles.
    *
-   * The data objects have the same data structure as returned by
-   * file_scan_directory() but only the uri property is used.
-   *
-   * @var array
+   * @var \Drupal\Core\Extension\Extension[]
    */
   protected $moduleData = array();
 
@@ -111,18 +110,18 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
   protected $configStorage;
 
   /**
-   * The list of the classnames of the service providers in this kernel.
-   *
-   * @var array
-   */
-  protected $serviceProviderClasses;
-
-  /**
    * Whether the container can be dumped.
    *
    * @var bool
    */
   protected $allowDumping;
+
+  /**
+   * Whether the container can be loaded.
+   *
+   * @var bool
+   */
+  protected $allowLoading;
 
   /**
    * Whether the container needs to be dumped once booting is complete.
@@ -132,14 +131,33 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
   protected $containerNeedsDumping;
 
   /**
-   * Holds the list of YAML files containing service definitions.
+   * List of discovered services.yml pathnames.
+   *
+   * This is a nested array whose top-level keys are 'app' and 'site', denoting
+   * the origin of a service provider. Site-specific providers have to be
+   * collected separately, because they need to be processed last, so as to be
+   * able to override services from application service providers.
    *
    * @var array
    */
   protected $serviceYamls;
 
   /**
-   * The array of registered service providers.
+   * List of discovered service provider class names.
+   *
+   * This is a nested array whose top-level keys are 'app' and 'site', denoting
+   * the origin of a service provider. Site-specific providers have to be
+   * collected separately, because they need to be processed last, so as to be
+   * able to override services from application service providers.
+   *
+   * @var array
+   */
+  protected $serviceProviderClasses;
+
+  /**
+   * List of instantiated service provider classes.
+   *
+   * @see \Drupal\Core\DrupalKernel::$serviceProviderClasses
    *
    * @var array
    */
@@ -160,12 +178,16 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
    * @param bool $allow_dumping
    *   (optional) FALSE to stop the container from being written to or read
    *   from disk. Defaults to TRUE.
+   * @param bool $allow_loading
+   *   (optional) FALSE to prevent the kernel attempting to read the dependency
+   *   injection container from disk. Defaults to $allow_dumping.
    */
-  public function __construct($environment, ClassLoader $class_loader, $allow_dumping = TRUE) {
+  public function __construct($environment, ClassLoader $class_loader, $allow_dumping = TRUE, $allow_loading = NULL) {
     $this->environment = $environment;
     $this->booted = FALSE;
     $this->classLoader = $class_loader;
     $this->allowDumping = $allow_dumping;
+    $this->allowLoading = isset($allow_loading) ? $allow_loading : $allow_dumping;
   }
 
   /**
@@ -204,23 +226,24 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
    * {@inheritdoc}
    */
   public function discoverServiceProviders() {
-    $this->configStorage = BootstrapConfigStorageFactory::get();
-    $serviceProviders = array(
-      'CoreServiceProvider' => new CoreServiceProvider(),
-    );
     $this->serviceYamls = array(
-      'core/core.services.yml'
+      'app' => array(),
+      'site' => array(),
     );
-    $this->serviceProviderClasses = array('Drupal\Core\CoreServiceProvider');
+    $this->serviceProviderClasses = array(
+      'app' => array(),
+      'site' => array(),
+    );
+    $this->serviceYamls['app']['core'] = 'core/core.services.yml';
+    $this->serviceProviderClasses['app']['core'] = 'Drupal\Core\CoreServiceProvider';
 
-    // Ensure we know what modules are enabled and that their namespaces are
-    // registered.
+    // Retrieve enabled modules and register their namespaces.
     if (!isset($this->moduleList)) {
-      $module_list = $this->configStorage->read('system.module');
-      $this->moduleList = isset($module_list['enabled']) ? $module_list['enabled'] : array();
+      $extensions = $this->getConfigStorage()->read('core.extension');
+      $this->moduleList = isset($extensions['module']) ? $extensions['module'] : array();
     }
     $module_filenames = $this->getModuleFileNames();
-    $this->registerNamespaces($this->getModuleNamespaces($module_filenames));
+    $this->classLoaderAddMultiplePsr4($this->getModuleNamespacesPsr4($module_filenames));
 
     // Load each module's serviceProvider class.
     foreach ($this->moduleList as $module => $weight) {
@@ -228,35 +251,35 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
       $name = "{$camelized}ServiceProvider";
       $class = "Drupal\\{$module}\\{$name}";
       if (class_exists($class)) {
-        $serviceProviders[$name] = new $class();
-        $this->serviceProviderClasses[] = $class;
+        $this->serviceProviderClasses['app'][$module] = $class;
       }
       $filename = dirname($module_filenames[$module]) . "/$module.services.yml";
       if (file_exists($filename)) {
-        $this->serviceYamls[] = $filename;
+        $this->serviceYamls['app'][$module] = $filename;
       }
     }
 
-    // Add site specific or test service providers.
+    // Add site-specific service providers.
     if (!empty($GLOBALS['conf']['container_service_providers'])) {
-      foreach ($GLOBALS['conf']['container_service_providers'] as $name => $class) {
-        $serviceProviders[$name] = new $class();
-        $this->serviceProviderClasses[] = $class;
+      foreach ($GLOBALS['conf']['container_service_providers'] as $class) {
+        if (class_exists($class)) {
+          $this->serviceProviderClasses['site'][] = $class;
+        }
       }
     }
-    // Add site specific or test YAMLs.
     if (!empty($GLOBALS['conf']['container_yamls'])) {
-      $this->serviceYamls = array_merge($this->serviceYamls, $GLOBALS['conf']['container_yamls']);
+      $this->serviceYamls['site'] = $GLOBALS['conf']['container_yamls'];
     }
-    return $serviceProviders;
+    if (file_exists($site_services_yml = conf_path() . '/services.yml')) {
+      $this->serviceYamls['site'][] = $site_services_yml;
+    }
   }
-
 
   /**
    * {@inheritdoc}
    */
-  public function getServiceProviders() {
-    return $this->serviceProviders;
+  public function getServiceProviders($origin) {
+    return $this->serviceProviders[$origin];
   }
 
   /**
@@ -289,27 +312,34 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
    * @param $module
    *   The name of the module.
    *
-   * @return \stdClass|bool
-   *   Returns a stdClass object if the module data is found containing at
-   *   least an uri property with the module path, for example
-   *   core/modules/user/user.module.
+   * @return \Drupal\Core\Extension\Extension|bool
+   *   Returns an Extension object if the module is found, FALSE otherwise.
    */
   protected function moduleData($module) {
     if (!$this->moduleData) {
       // First, find profiles.
-      $profiles_scanner = new SystemListing();
-      $all_profiles = $profiles_scanner->scan('/^' . DRUPAL_PHP_FUNCTION_PATTERN . '\.profile$/', 'profiles');
-      $profiles = array_keys(array_intersect_key($this->moduleList, $all_profiles));
+      $listing = new ExtensionDiscovery();
+      $listing->setProfileDirectories(array());
+      $all_profiles = $listing->scan('profile');
+      $profiles = array_intersect_key($all_profiles, $this->moduleList);
+
       // If a module is within a profile directory but specifies another
       // profile for testing, it needs to be found in the parent profile.
-      if (($parent_profile_config = $this->configStorage->read('simpletest.settings')) && isset($parent_profile_config['parent_profile']) && $parent_profile_config['parent_profile'] != $profiles[0]) {
+      $settings = $this->getConfigStorage()->read('simpletest.settings');
+      $parent_profile = !empty($settings['parent_profile']) ? $settings['parent_profile'] : NULL;
+      if ($parent_profile && !isset($profiles[$parent_profile])) {
         // In case both profile directories contain the same extension, the
         // actual profile always has precedence.
-        array_unshift($profiles, $parent_profile_config['parent_profile']);
+        $profiles = array($parent_profile => $all_profiles[$parent_profile]) + $profiles;
       }
+
+      $profile_directories = array_map(function ($profile) {
+        return $profile->getPath();
+      }, $profiles);
+      $listing->setProfileDirectories($profile_directories);
+
       // Now find modules.
-      $modules_scanner = new SystemListing($profiles);
-      $this->moduleData = $all_profiles + $modules_scanner->scan('/^' . DRUPAL_PHP_FUNCTION_PATTERN . '\.module$/', 'modules');
+      $this->moduleData = $profiles + $listing->scan('module');
     }
     return isset($this->moduleData[$module]) ? $this->moduleData[$module] : FALSE;
   }
@@ -322,9 +352,15 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
    */
   public function updateModules(array $module_list, array $module_filenames = array()) {
     $this->newModuleList = $module_list;
-    foreach ($module_filenames as $module => $filename) {
-      $this->moduleData[$module] = (object) array('uri' => $filename);
+    foreach ($module_filenames as $name => $extension) {
+      $this->moduleData[$name] = $extension;
     }
+
+    // This method is called whenever the list of modules changed. Therefore
+    // disable loading of a dumped container from the disk, because it is
+    // guaranteed to be out of date and needs to be rebuilt anyway.
+    $this->allowLoading = FALSE;
+
     // If we haven't yet booted, we don't need to do anything: the new module
     // list will take effect when boot() is called. If we have already booted,
     // then reboot in order to refresh the serviceProvider list and container.
@@ -335,20 +371,13 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
   }
 
   /**
-   * Returns the classname based on environment and testing prefix.
+   * Returns the classname based on environment.
    *
    * @return string
    *   The class name.
    */
   protected function getClassName() {
     $parts = array('service_container', $this->environment);
-    // Make sure to use a testing-specific container even in the parent site.
-    if (!empty($GLOBALS['drupal_test_info']['test_run_id'])) {
-      $parts[] = $GLOBALS['drupal_test_info']['test_run_id'];
-    }
-    elseif ($prefix = drupal_valid_test_ua()) {
-      $parts[] = $prefix;
-    }
     return implode('_', $parts);
   }
 
@@ -371,8 +400,7 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
     $this->containerNeedsDumping = FALSE;
     $persist = $this->getServicesToPersist();
     // The request service requires custom persisting logic, since it is also
-    // potentially scoped. During Drupal installation, there is a request
-    // service without a request scope.
+    // potentially scoped.
     $request_scope = FALSE;
     if (isset($this->container)) {
       if ($this->container->isScopeActive('request')) {
@@ -386,7 +414,7 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
     $class = $this->getClassName();
     $cache_file = $class . '.php';
 
-    if ($this->allowDumping) {
+    if ($this->allowLoading) {
       // First, try to load.
       if (!class_exists($class, FALSE)) {
         $this->storage()->load($cache_file);
@@ -406,33 +434,12 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
       $this->moduleList = $this->newModuleList;
       unset($this->newModuleList);
     }
-    // Second, check if some other request -- for example on another web
-    // frontend or during the installer -- changed the list of enabled modules.
     if (isset($this->container)) {
       // All namespaces must be registered before we attempt to use any service
       // from the container.
-      $container_modules = $this->container->getParameter('container.modules');
-      $namespaces_before = $this->classLoader->getPrefixes();
-      $this->registerNamespaces($this->getModuleNamespaces($container_modules));
-
-      // If 'container.modules' is wrong, the container must be rebuilt.
-      if (!isset($this->moduleList)) {
-        $this->moduleList = $this->container->get('config.factory')->get('system.module')->get('enabled');
-      }
-      if (array_keys($this->moduleList) !== array_keys($container_modules)) {
-        $persist = $this->getServicesToPersist();
-        unset($this->container);
-        // Revert the class loader to its prior state. However,
-        // registerNamespaces() performs a merge rather than replace, so to
-        // effectively remove erroneous registrations, we must replace them with
-        // empty arrays.
-        $namespaces_after = $this->classLoader->getPrefixes();
-        $namespaces_before += array_fill_keys(array_diff(array_keys($namespaces_after), array_keys($namespaces_before)), array());
-        $this->registerNamespaces($namespaces_before);
-      }
+      $this->classLoaderAddMultiplePsr4($this->container->getParameter('container.namespaces'));
     }
-
-    if (!isset($this->container)) {
+    else {
       $this->container = $this->buildContainer();
       $this->persistServices($persist);
 
@@ -500,18 +507,18 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
     $this->initializeServiceProviders();
     $container = $this->getContainerBuilder();
     $container->set('kernel', $this);
-    $container->setParameter('container.service_providers', $this->serviceProviderClasses);
-    $container->setParameter('container.modules', $this->getModuleFileNames());
+    $container->setParameter('container.modules', $this->getModulesParameter());
 
     // Get a list of namespaces and put it onto the container.
-    $namespaces = $this->getModuleNamespaces($this->getModuleFileNames());
+    $namespaces = $this->getModuleNamespacesPsr4($this->getModuleFileNames());
     // Add all components in \Drupal\Core and \Drupal\Component that have a
     // Plugin directory.
     foreach (array('Core', 'Component') as $parent_directory) {
       $path = DRUPAL_ROOT . '/core/lib/Drupal/' . $parent_directory;
+      $parent_namespace = 'Drupal\\' . $parent_directory;
       foreach (new \DirectoryIterator($path) as $component) {
         if (!$component->isDot() && $component->isDir() && is_dir($component->getPathname() . '/Plugin')) {
-          $namespaces['Drupal\\' . $parent_directory . '\\' . $component->getFilename()] = DRUPAL_ROOT . '/core/lib';
+          $namespaces[$parent_namespace . '\\' . $component->getFilename()] = $path . '/' . $component->getFilename();
         }
       }
     }
@@ -522,10 +529,11 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
     // avoids the circular dependencies that would created by
     // \Drupal\language\LanguageServiceProvider::alter() and allows the default
     // language to not be English in the installer.
-    $system = BootstrapConfigStorageFactory::get()->read('system.site');
     $default_language_values = Language::$defaultValues;
-    if ($default_language_values['id'] != $system['langcode']) {
-      $default_language_values = array('id' => $system['langcode'], 'default' => TRUE);
+    if ($system = $this->getConfigStorage()->read('system.site')) {
+      if ($default_language_values['id'] != $system['langcode']) {
+        $default_language_values = array('id' => $system['langcode'], 'default' => TRUE);
+      }
     }
     $container->setParameter('language.default_values', $default_language_values);
 
@@ -533,11 +541,22 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
     $container->register('class_loader')->setSynthetic(TRUE);
     $container->register('kernel', 'Symfony\Component\HttpKernel\KernelInterface')->setSynthetic(TRUE);
     $container->register('service_container', 'Symfony\Component\DependencyInjection\ContainerInterface')->setSynthetic(TRUE);
+
+    // Register application services.
     $yaml_loader = new YamlFileLoader($container);
-    foreach ($this->serviceYamls as $filename) {
+    foreach ($this->serviceYamls['app'] as $filename) {
       $yaml_loader->load($filename);
     }
-    foreach ($this->serviceProviders as $provider) {
+    foreach ($this->serviceProviders['app'] as $provider) {
+      if ($provider instanceof ServiceProviderInterface) {
+        $provider->register($container);
+      }
+    }
+    // Register site-specific service overrides.
+    foreach ($this->serviceYamls['site'] as $filename) {
+      $yaml_loader->load($filename);
+    }
+    foreach ($this->serviceProviders['site'] as $provider) {
       if ($provider instanceof ServiceProviderInterface) {
         $provider->register($container);
       }
@@ -565,13 +584,15 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
    * @throws \LogicException
    */
   protected function initializeServiceProviders() {
-    $this->serviceProviders = array();
-
-    foreach ($this->discoverServiceProviders() as $name => $provider) {
-      if (isset($this->serviceProviders[$name])) {
-        throw new \LogicException(sprintf('Trying to register two service providers with the same name "%s"', $name));
+    $this->discoverServiceProviders();
+    $this->serviceProviders = array(
+      'app' => array(),
+      'site' => array(),
+    );
+    foreach ($this->serviceProviderClasses as $origin => $classes) {
+      foreach ($classes as $name => $class) {
+        $this->serviceProviders[$origin][$name] = new $class;
       }
-      $this->serviceProviders[$name] = $provider;
     }
   }
 
@@ -620,19 +641,6 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
   }
 
   /**
-   * Overrides and eliminates this method from the parent class. Do not use.
-   *
-   * This method is part of the KernelInterface interface, but takes an object
-   * implementing LoaderInterface as its only parameter. This is part of the
-   * Config compoment from Symfony, which is not provided by Drupal core.
-   *
-   * Modules wishing to provide an extension to this class which uses this
-   * method are responsible for ensuring the Config component exists.
-   */
-  public function registerContainerConfiguration(LoaderInterface $loader) {
-  }
-
-  /**
    * Gets the PHP code storage object to use for the compiled container.
    *
    * @return \Drupal\Component\PhpStorage\PhpStorageInterface
@@ -645,35 +653,91 @@ class DrupalKernel implements DrupalKernelInterface, TerminableInterface {
   }
 
   /**
-   * Returns the file name for each enabled module.
+   * Returns the active configuration storage to use during building the container.
+   *
+   * @return \Drupal\Core\Config\StorageInterface
+   */
+  protected function getConfigStorage() {
+    if (!isset($this->configStorage)) {
+      // The active configuration storage may not exist yet; e.g., in the early
+      // installer. Catch the exception thrown by config_get_config_directory().
+      try {
+        $this->configStorage = BootstrapConfigStorageFactory::get();
+      }
+      catch (\Exception $e) {
+        $this->configStorage = new NullStorage();
+      }
+    }
+    return $this->configStorage;
+  }
+
+  /**
+   * Returns an array of Extension class parameters for all enabled modules.
+   *
+   * @return array
+   */
+  protected function getModulesParameter() {
+    $extensions = array();
+    foreach ($this->moduleList as $name => $weight) {
+      if ($data = $this->moduleData($name)) {
+        $extensions[$name] = array(
+          'type' => $data->getType(),
+          'pathname' => $data->getPathname(),
+          'filename' => $data->getExtensionFilename(),
+        );
+      }
+    }
+    return $extensions;
+  }
+
+  /**
+   * Gets the file name for each enabled module.
+   *
+   * @return array
+   *   Array where each key is a module name, and each value is a path to the
+   *   respective *.module or *.profile file.
    */
   protected function getModuleFileNames() {
     $filenames = array();
     foreach ($this->moduleList as $module => $weight) {
       if ($data = $this->moduleData($module)) {
-        $filenames[$module] = $data->uri;
+        $filenames[$module] = $data->getPathname();
       }
     }
     return $filenames;
   }
 
   /**
-   * Gets the namespaces of each enabled module.
+   * Gets the PSR-4 base directories for module namespaces.
+   *
+   * @param string[] $module_file_names
+   *   Array where each key is a module name, and each value is a path to the
+   *   respective *.module or *.profile file.
+   *
+   * @return string[]
+   *   Array where each key is a module namespace like 'Drupal\system', and each
+   *   value is the PSR-4 base directory associated with the module namespace.
    */
-  protected function getModuleNamespaces($moduleFileNames) {
+  protected function getModuleNamespacesPsr4($module_file_names) {
     $namespaces = array();
-    foreach ($moduleFileNames as $module => $filename) {
-      $namespaces["Drupal\\$module"] = DRUPAL_ROOT . '/' . dirname($filename) . '/lib';
+    foreach ($module_file_names as $module => $filename) {
+      $namespaces["Drupal\\$module"] = DRUPAL_ROOT . '/' . dirname($filename) . '/src';
     }
     return $namespaces;
   }
 
   /**
-   * Registers a list of namespaces.
+   * Registers a list of namespaces with PSR-4 directories for class loading.
+   *
+   * @param array $namespaces
+   *   Array where each key is a namespace like 'Drupal\system', and each value
+   *   is either a PSR-4 base directory, or an array of PSR-4 base directories
+   *   associated with this namespace.
    */
-  protected function registerNamespaces(array $namespaces = array()) {
-    foreach ($namespaces as $prefix => $path) {
-      $this->classLoader->add($prefix, $path);
+  protected function classLoaderAddMultiplePsr4(array $namespaces = array()) {
+    foreach ($namespaces as $prefix => $paths) {
+      $this->classLoader->addPsr4($prefix . '\\', $paths);
     }
   }
+
 }

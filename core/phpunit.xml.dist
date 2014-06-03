@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <phpunit bootstrap="tests/bootstrap.php" colors="true">
+  <php>
+    <!-- Set error reporting to E_ALL. -->
+    <ini name="error_reporting" value="32767"/>
+    <!-- Do not limit the amount of memory tests take to run. -->
+    <ini name="memory_limit" value="-1"/>
+  </php>
   <testsuites>
     <testsuite name="Drupal Unit Test Suite">
       <directory>./tests</directory>
@@ -12,7 +18,7 @@
       <!-- Exclude Drush tests. -->
       <exclude>./drush/tests</exclude>
       <!-- Exclude special-case files from config's test modules. -->
-      <exclude>./modules/config/tests/config_test/lib/Drupal/config_test</exclude>
+      <exclude>./modules/config/tests/config_test/src</exclude>
     </testsuite>
   </testsuites>
   <!-- Filter for coverage reports. -->

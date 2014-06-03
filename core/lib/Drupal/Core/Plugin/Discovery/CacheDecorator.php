@@ -8,6 +8,7 @@
 namespace Drupal\Core\Plugin\Discovery;
 
 use Drupal\Component\Plugin\Discovery\CachedDiscoveryInterface;
+use Drupal\Component\Plugin\Discovery\DiscoveryCachedTrait;
 use Drupal\Component\Plugin\Discovery\DiscoveryInterface;
 use Drupal\Core\Cache\Cache;
 
@@ -15,6 +16,8 @@ use Drupal\Core\Cache\Cache;
  * Enables static and persistent caching of discovered plugin definitions.
  */
 class CacheDecorator implements CachedDiscoveryInterface {
+
+  use DiscoveryCachedTrait;
 
   /**
    * The cache key used to store the definition list.
@@ -45,13 +48,6 @@ class CacheDecorator implements CachedDiscoveryInterface {
   protected $cacheTags;
 
   /**
-   * The plugin definitions of the decorated discovery class.
-   *
-   * @var array
-   */
-  protected $definitions;
-
-  /**
    * The Discovery object being decorated.
    *
    * @var \Drupal\Component\Plugin\Discovery\DiscoveryInterface
@@ -75,34 +71,12 @@ class CacheDecorator implements CachedDiscoveryInterface {
    * @param array $cache_tags
    *   The cache tags associated with the definition list.
    */
-  public function __construct(DiscoveryInterface $decorated, $cache_key, $cache_bin = 'cache', $cache_expire = Cache::PERMANENT, array $cache_tags = array()) {
+  public function __construct(DiscoveryInterface $decorated, $cache_key, $cache_bin = 'default', $cache_expire = Cache::PERMANENT, array $cache_tags = array()) {
     $this->decorated = $decorated;
     $this->cacheKey = $cache_key;
     $this->cacheBin = $cache_bin;
     $this->cacheExpire = $cache_expire;
     $this->cacheTags = $cache_tags;
-  }
-
-  /**
-   * Implements Drupal\Component\Plugin\Discovery\DicoveryInterface::getDefinition().
-   */
-  public function getDefinition($plugin_id) {
-    // Optimize for fast access to definitions if they are already in memory.
-    if (isset($this->definitions)) {
-      // Avoid using a ternary that would create a copy of the array.
-      if (isset($this->definitions[$plugin_id])) {
-        return $this->definitions[$plugin_id];
-      }
-      else {
-        return;
-      }
-    }
-
-    $definitions = $this->getDefinitions();
-    // Avoid using a ternary that would create a copy of the array.
-    if (isset($definitions[$plugin_id])) {
-      return $definitions[$plugin_id];
-    }
   }
 
   /**

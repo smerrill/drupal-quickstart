@@ -2,6 +2,7 @@
 
 use Drupal\Core\Database\Database;
 use Drupal\Core\Database\Query\Condition;
+use Drupal\Core\Site\Settings;
 
 /**
  * @file
@@ -39,12 +40,14 @@ use Drupal\Core\Database\Query\Condition;
  * For example, one might wish to return a list of the most recent 10 rows
  * authored by a given user. Instead of directly issuing the SQL query
  * @code
- * SELECT e.id, e.title, e.created FROM example e WHERE e.uid = $uid LIMIT 0, 10;
+ * SELECT e.id, e.title, e.created FROM example e WHERE e.uid = $uid
+ *   ORDER BY e.created DESC LIMIT 0, 10;
  * @endcode
  * one would instead call the Drupal functions:
  * @code
  * $result = db_query_range('SELECT e.id, e.title, e.created
- *   FROM {example} e WHERE e.uid = :uid', 0, 10, array(':uid' => $uid));
+ *   FROM {example} e WHERE e.uid = :uid
+ *   ORDER BY e.created DESC', 0, 10, array(':uid' => $uid));
  * foreach ($result as $record) {
  *   // Perform operations on $record->title, etc. here.
  * }
@@ -252,14 +255,14 @@ function db_query_range($query, $from, $count, array $args = array(), array $opt
 }
 
 /**
- * Executes a query string and saves the result set to a temporary table.
+ * Executes a SELECT query string and saves the result set to a temporary table.
  *
  * The execution of the query string happens against the active database.
  *
  * @param $query
- *   The prepared statement query to run. Although it will accept both named and
- *   unnamed placeholders, named placeholders are strongly preferred as they are
- *   more self-documenting.
+ *   The prepared SELECT statement query to run. Although it will accept both
+ *   named and unnamed placeholders, named placeholders are strongly preferred
+ *   as they are more self-documenting.
  * @param $args
  *   An array of values to substitute into the query. If the query uses named
  *   placeholders, this is an associative array in any order. If the query uses
@@ -728,7 +731,7 @@ function db_drop_table($table) {
  *   will be set to the value of the key in all rows. This is most useful for
  *   creating NOT NULL columns with no default value in existing tables.
  * @param $keys_new
- *   Optional keys and indexes specification to be created on the table along
+ *   (optional) Keys and indexes specification to be created on the table along
  *   with adding the field. The format is the same as a table specification, but
  *   without the 'fields' element. If you are adding a type 'serial' field, you
  *   MUST specify at least one key or index including it in this array. See
@@ -908,7 +911,7 @@ function db_drop_index($table, $name) {
  * @param $spec
  *   The field specification for the new field.
  * @param $keys_new
- *   Optional keys and indexes specification to be created on the table along
+ *   (optional) Keys and indexes specification to be created on the table along
  *   with changing the field. The format is the same as a table specification
  *   but without the 'fields' element.
  */
@@ -931,7 +934,7 @@ function db_ignore_slave() {
     // Five minutes is long enough to allow the slave to break and resume
     // interrupted replication without causing problems on the Drupal site from
     // the old data.
-    $duration = settings()->get('maximum_replication_lag', 300);
+    $duration = Settings::get('maximum_replication_lag', 300);
     // Set session variable with amount of time to delay before using slave.
     $_SESSION['ignore_slave_server'] = REQUEST_TIME + $duration;
   }

@@ -1,16 +1,11 @@
 # Schema for configuration files of the Image module.
 
 image.style.*:
-  type: mapping
+  type: config_entity
   label: 'Image style'
   mapping:
     name:
       type: string
-    uuid:
-      type: string
-      label: 'UUID'
-    label:
-      type: label
     effects:
       type: sequence
       sequence:
@@ -24,12 +19,6 @@ image.style.*:
               type: integer
             uuid:
               type: string
-    langcode:
-      type: string
-      label: 'Default language'
-    status:
-      type: boolean
-      label: 'Enabled'
 
 image.effect.image_crop:
   type: image_size
@@ -90,43 +79,6 @@ field.image.settings:
     default_image:
       type: field_default_image
       label: 'Default value'
-    column_groups:
-      type: mapping
-      label: 'Column groups'
-      mapping:
-        file:
-          type: mapping
-          label: 'File settings'
-          mapping:
-            label:
-              type: label
-              label: 'Label'
-            columns:
-              type: sequence
-              label: 'Columns'
-              sequence:
-                - type: string
-                  label: 'Column'
-        alt:
-          type: mapping
-          label: 'Alternative text'
-          mapping:
-            label:
-              type: label
-              label: 'Label'
-            translatable:
-              type: boolean
-              label: 'Translatable'
-        title:
-          type: mapping
-          label: 'Title text'
-          mapping:
-            label:
-              type: label
-              label: 'Label'
-            translatable:
-              type: boolean
-              label: 'Translatable'
 
 field.image.instance_settings:
   type: mapping
@@ -163,8 +115,31 @@ field.image.instance_settings:
       type: field_default_image
       label: 'Default value'
 
-entity_display.field.image:
-  type: entity_field_display_base
+field.image.value:
+  type: sequence
+  label: 'Default value'
+  sequence:
+    - type: mapping
+      label: 'Default image'
+      mapping:
+        fid:
+          type: integer
+          label: 'File ID'
+        alt:
+          type: string
+          label: 'Alternate text'
+        title:
+          type: string
+          label: 'Title text'
+        width:
+          type: integer
+          label: 'Width'
+        height:
+          type: integer
+          label: 'Height'
+
+entity_view_display.field.image:
+  type: entity_field_view_display_base
   label: 'Image field display format settings'
   mapping:
     settings:

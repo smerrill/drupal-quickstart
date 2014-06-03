@@ -2,7 +2,7 @@
 
 /**
  * @file
- * Definition of Drupal\Component\PhpStorage\FileStorage.
+ * Contains \Drupal\Component\PhpStorage\FileStorage.
  */
 
 namespace Drupal\Component\PhpStorage;
@@ -53,8 +53,91 @@ class FileStorage implements PhpStorageInterface {
    */
   public function save($name, $code) {
     $path = $this->getFullPath($name);
-    $this->ensureDirectory(dirname($path));
+    $directory = dirname($path);
+    if ($this->ensureDirectory($directory)) {
+      $htaccess_path =  $directory . '/.htaccess';
+      if (!file_exists($htaccess_path) && file_put_contents($htaccess_path, static::htaccessLines())) {
+        @chmod($htaccess_path, 0444);
+      }
+    }
     return (bool) file_put_contents($path, $code);
+  }
+
+  /**
+   * Returns the standard .htaccess lines that Drupal writes to file directories.
+   *
+   * This code is located here so this component can be stand-alone, but it is
+   * also called by file_htaccess_lines().
+   *
+   * @param bool $private
+   *   (Optional) Set to FALSE to return the .htaccess lines for an open and
+   *   public directory. The default is TRUE, which returns the .htaccess lines
+   *   for a private and protected directory.
+   *
+   * @return string
+   *   The desired contents of the .htaccess file.
+   */
+  public static function htaccessLines($private = TRUE) {
+    $lines = <<<EOF
+# Turn off all options we don't need.
+Options None
+Options +FollowSymLinks
+
+# Set the catch-all handler to prevent scripts from being executed.
+SetHandler Drupal_Security_Do_Not_Remove_See_SA_2006_006
+<Files *>
+  # Override the handler again if we're run later in the evaluation list.
+  SetHandler Drupal_Security_Do_Not_Remove_See_SA_2013_003
+</Files>
+
+# If we know how to do it safely, disable the PHP engine entirely.
+<IfModule mod_php5.c>
+  php_flag engine off
+</IfModule>
+EOF;
+
+    if ($private) {
+      $lines = <<<EOF
+# Deny all requests from Apache 2.4+.
+<IfModule mod_authz_core.c>
+  Require all denied
+</IfModule>
+
+# Deny all requests from Apache 2.0-2.2.
+<IfModule !mod_authz_core.c>
+  Deny from all
+</IfModule>
+EOF
+      . $lines;
+    }
+
+    return $lines;
+  }
+
+  /**
+   * Ensures the directory exists, has the right permissions, and a .htaccess.
+   *
+   * For compatibility with open_basedir, the requested directory is created
+   * using a recursion logic that is based on the relative directory path/tree:
+   * It works from the end of the path recursively back towards the root
+   * directory, until an existing parent directory is found. From there, the
+   * subdirectories are created.
+   *
+   * @param string $directory
+   *   The directory path.
+   * @param int $mode
+   *   The mode, permissions, the directory should have.
+   *
+   * @return bool
+   *   TRUE if the directory exists or has been created, FALSE otherwise.
+   */
+  protected function ensureDirectory($directory, $mode = 0777) {
+    if ($this->createDirectory($directory, $mode)) {
+      $htaccess_path =  $directory . '/.htaccess';
+      if (!file_exists($htaccess_path) && file_put_contents($htaccess_path, static::htaccessLines())) {
+        @chmod($htaccess_path, 0444);
+      }
+    }
   }
 
   /**
@@ -76,7 +159,7 @@ class FileStorage implements PhpStorageInterface {
    * @return bool
    *   TRUE if the directory exists or has been created, FALSE otherwise.
    */
-  protected function ensureDirectory($directory, $mode = 0777, $is_backwards_recursive = FALSE) {
+  protected function createDirectory($directory, $mode = 0777, $is_backwards_recursive = FALSE) {
     // If the directory exists already, there's nothing to do.
     if (is_dir($directory)) {
       return TRUE;
@@ -97,7 +180,7 @@ class FileStorage implements PhpStorageInterface {
     // until an existing directory is hit, and from there, recursively create
     // the sub-directories. Only if that recursion succeeds, create the final,
     // originally requested subdirectory.
-    return $this->ensureDirectory($parent, $mode, TRUE) && mkdir($directory) && chmod($directory, $mode);
+    return $this->createDirectory($parent, $mode, TRUE) && mkdir($directory) && chmod($directory, $mode);
   }
 
   /**
@@ -112,9 +195,9 @@ class FileStorage implements PhpStorageInterface {
   }
 
   /**
-   * Returns the full path where the file is or should be stored.
+   * {@inheritdoc}
    */
-  protected function getFullPath($name) {
+  public function getFullPath($name) {
     return $this->directory . '/' . $name;
   }
 
@@ -165,4 +248,23 @@ class FileStorage implements PhpStorageInterface {
     // If there's nothing to delete return TRUE anyway.
     return TRUE;
   }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function listAll() {
+    $names = array();
+    if (file_exists($this->directory)) {
+      foreach (new \DirectoryIterator($this->directory) as $fileinfo) {
+        if (!$fileinfo->isDot()) {
+          $name = $fileinfo->getFilename();
+          if ($name != '.htaccess') {
+            $names[] = $name;
+          }
+        }
+      }
+    }
+    return $names;
+  }
+
 }

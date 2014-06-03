@@ -11,6 +11,10 @@
  * ability to install contributed modules and themes via an user interface.
  */
 
+use Drupal\Core\Site\Settings;
+use Symfony\Cmf\Component\Routing\RouteObjectInterface;
+use Symfony\Component\HttpFoundation\Request;
+
 // These are internally used constants for this code, do not modify.
 
 /**
@@ -61,12 +65,9 @@ const UPDATE_FETCH_PENDING = -4;
 /**
  * Implements hook_help().
  */
-function update_help($path, $arg) {
-  switch ($path) {
-    case 'admin/reports/updates':
-      return '<p>' . t('Here you can find information about available updates for your installed modules and themes. Note that each module or theme is part of a "project", which may or may not have the same name, and might include multiple modules or themes within it.') . '</p>';
-
-    case 'admin/help#update':
+function update_help($route_name, Request $request) {
+  switch ($route_name) {
+    case 'help.page.update':
       $output = '';
       $output .= '<h3>' . t('About') . '</h3>';
       $output .= '<p>' . t("The Update Manager module periodically checks for new versions of your site's software (including contributed modules and themes), and alerts administrators to available updates. In order to provide update information, anonymous usage statistics are sent to Drupal.org. If desired, you may disable the Update Manager module from the <a href='@modules'>Module administration page</a>. For more information, see the online handbook entry for <a href='@update'>Update Manager module</a>.", array('@update' => 'http://drupal.org/documentation/modules/update', '@modules' => url('admin/modules'))) . '</p>';
@@ -87,6 +88,9 @@ function update_help($path, $arg) {
       }
       $output .= '</dl>';
       return $output;
+
+    case 'update.status':
+      return '<p>' . t('Here you can find information about available updates for your installed modules and themes. Note that each module or theme is part of a "project", which may or may not have the same name, and might include multiple modules or themes within it.') . '</p>';
   }
 }
 
@@ -94,8 +98,11 @@ function update_help($path, $arg) {
  * Implements hook_page_build().
  */
 function update_page_build() {
-  if (arg(0) == 'admin' && user_access('administer site configuration')) {
-    switch (current_path()) {
+  /** @var \Drupal\Core\Routing\AdminContext $admin_context */
+  $admin_context = \Drupal::service('router.admin_context');
+  if ($admin_context->isAdminRoute(\Drupal::request()->attributes->get(RouteObjectInterface::ROUTE_OBJECT)) && \Drupal::currentUser()->hasPermission('administer site configuration')) {
+    $current_path = current_path();
+    switch ($current_path) {
       // These pages don't need additional nagging.
       case 'admin/appearance/update':
       case 'admin/appearance/install':
@@ -145,54 +152,6 @@ function update_page_build() {
 }
 
 /**
- * Implements hook_library_info().
- */
-function update_library_info() {
-  $path = drupal_get_path('module', 'update');
-  $libraries['drupal.update.admin'] = array(
-    'title' => 'Update administration UI',
-    'website' => '',
-    'version' => \Drupal::VERSION,
-    'css' => array(
-      $path . '/css/update.admin.css' => array(),
-    ),
-  );
-
-  return $libraries;
-}
-
-/**
- * Implements hook_menu().
- */
-function update_menu() {
-  $items = array();
-
-  $items['admin/reports/updates'] = array(
-    'title' => 'Available updates',
-    'description' => 'Get a status report about available updates for your installed modules and themes.',
-    'route_name' => 'update.status',
-    'weight' => -50,
-  );
-
-  return $items;
-}
-
-/**
- * Implements hook_menu_link_defaults().
- */
-function update_menu_link_defaults() {
-  $links['update.admin.reports.updates'] = array(
-    'link_title' => 'Available updates',
-    'description' => 'Get a status report about available updates for your installed modules and themes.',
-    'route_name' => 'update.status',
-    'parent' => 'system.admin.reports',
-    'weight' => -50,
-  );
-
-  return $links;
-}
-
-/**
  * Access callback: Resolves if the current user can access updater menu items.
  *
  * It both enforces the 'administer software updates' permission and the global
@@ -205,7 +164,7 @@ function update_menu_link_defaults() {
  * @see update_menu()
  */
 function update_manager_access() {
-  return settings()->get('allow_authorize_operations', TRUE) && user_access('administer software updates');
+  return Settings::get('allow_authorize_operations', TRUE) && user_access('administer software updates');
 }
 
 /**
@@ -472,7 +431,7 @@ function update_fetch_data_finished($success, $results) {
  */
 function update_mail($key, &$message, $params) {
   $langcode = $message['langcode'];
-  $language = language_load($langcode);
+  $language = \Drupal::languageManager()->getLanguage($langcode);
   $message['subject'] .= t('New release(s) available for !site_name', array('!site_name' => \Drupal::config('system.site')->get('name')), array('langcode' => $langcode));
   foreach ($params as $msg_type => $msg_reason) {
     $message['body'][] = _update_message_text($msg_type, $msg_reason, FALSE, $langcode);
@@ -563,7 +522,7 @@ function _update_message_text($msg_type, $msg_reason, $report_link = FALSE, $lan
       break;
   }
   if (!empty($langcode)) {
-    $language = language_load($langcode);
+    $language = \Drupal::languageManager()->getLanguage($langcode);
   }
   else {
     $language = NULL;
@@ -629,7 +588,7 @@ function theme_update_last_check($variables) {
  * an .info.yml file which claims that the code is compatible with the current
  * version of Drupal core.
  *
- * @see drupal_system_listing()
+ * @see \Drupal\Core\Extension\ExtensionDiscovery
  * @see _system_rebuild_module_data()
  */
 function update_verify_update_archive($project, $archive_file, $directory) {
@@ -789,7 +748,9 @@ function update_clear_update_disk_cache() {
 function update_delete_file_if_stale($path) {
   if (file_exists($path)) {
     $filectime = filectime($path);
-    if (REQUEST_TIME - $filectime > DRUPAL_MAXIMUM_TEMP_FILE_AGE || (preg_match('/.*-dev\.(tar\.gz|zip)/i', $path) && REQUEST_TIME - $filectime > 300)) {
+    $max_age = \Drupal::config('system.file')->get('temporary_maximum_age');
+
+    if (REQUEST_TIME - $filectime > $max_age || (preg_match('/.*-dev\.(tar\.gz|zip)/i', $path) && REQUEST_TIME - $filectime > 300)) {
       file_unmanaged_delete_recursive($path);
     }
   }

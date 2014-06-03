@@ -7,14 +7,15 @@
 
 use Drupal\breakpoint\Entity\Breakpoint;
 use Drupal\breakpoint\Entity\BreakpointGroup;
-use Drupal\Core\Config\Entity\ConfigStorageController;
+use Drupal\Core\Config\Entity\ConfigEntityStorage;
+use Symfony\Component\HttpFoundation\Request;
 
 /**
  * Implements hook_help().
  */
-function breakpoint_help($path, $arg) {
-  switch ($path) {
-    case 'admin/help#breakpoint':
+function breakpoint_help($route_name, Request $request) {
+  switch ($route_name) {
+    case 'help.page.breakpoint':
       $output = '';
       $output .= '<h3>' . t('About') . '</h3>';
       $output .= '<p>' . t('The Breakpoint module keeps track of the height, width, and resolution breakpoints where a responsive design needs to change in order to respond to different devices being used to view the site. This module does not have a user interface, but contributed modules such as <a href="!breakpoint_ui">Breakpoint UI</a> may provide one. For more information, see the <a href="!docs">online documentation for the Breakpoint module</a>.', array('!docs' => 'https://drupal.org/documentation/modules/breakpoint', '!breakpoint_ui' => 'https://drupal.org/project/breakpoint_ui')) . '</p>';
@@ -39,122 +40,6 @@ function breakpoint_help($path, $arg) {
 }
 
 /**
- * Implements hook_themes_disabled().
- *
- * @param array $theme_list
- *   An array of theme names.
- *
- * @see _breakpoint_delete_breakpoints()
- *
- * @todo: This should be removed if https://drupal.org/node/1813110 is resolved.
- */
-function breakpoint_themes_disabled($theme_list) {
-  _breakpoint_delete_breakpoints($theme_list, Breakpoint::SOURCE_TYPE_THEME);
-}
-
-/**
- * Implements hook_modules_uninstalled().
- *
- * @param array $modules
- *   An array of the modules that were uninstalled.
- *
- * @see _breakpoint_delete_breakpoints()
- *
- * @todo: This should be removed if https://drupal.org/node/1813110 is resolved.
- */
-function breakpoint_modules_uninstalled($modules) {
-  _breakpoint_delete_breakpoints($modules, Breakpoint::SOURCE_TYPE_MODULE);
-}
-
-/**
- * Remove breakpoints from all disabled themes or uninstalled modules.
- *
- * The source type has to match the original source type, otherwise the group
- * will not be deleted. All groups created by the theme or module will be
- * deleted as well.
- *
- * @param array $list
- *   A list of modules or themes that are disabled.
- * @param string $source_type
- *   Either Breakpoint::SOURCE_TYPE_THEME or Breakpoint::SOURCE_TYPE_MODULE.
- */
-function _breakpoint_delete_breakpoints($list, $source_type) {
-  $ids = config_get_storage_names_with_prefix('breakpoint.breakpoint_group.' . $source_type . '.');
-  $entity_manager = \Drupal::entityManager();
-  $entity_info = $entity_manager->getDefinition('breakpoint_group');
-
-  // Remove the breakpoint.breakpoint part of the breakpoint identifier.
-  foreach ($ids as &$id) {
-    $id = ConfigStorageController::getIDFromConfigName($id, $entity_info->getConfigPrefix());
-  }
-  $breakpoint_groups = entity_load_multiple('breakpoint_group', $ids);
-
-  foreach ($breakpoint_groups as $breakpoint_group) {
-    if ($breakpoint_group->sourceType == $source_type && in_array($breakpoint_group->source, $list)) {
-      // Delete the automatically created breakpoint group.
-      $breakpoint_group->delete();
-
-      // Get all breakpoints defined by this theme/module.
-      $breakpoint_ids = \Drupal::service('config.storage')->listAll('breakpoint.breakpoint.' . $source_type . '.' . $breakpoint_group->id() . '.');
-      $entity_info = $entity_manager->getDefinition('breakpoint');
-
-      // Remove the breakpoint.breakpoint part of the breakpoint identifier.
-      foreach ($breakpoint_ids as &$breakpoint_id) {
-        $breakpoint_id = ConfigStorageController::getIDFromConfigName($breakpoint_id, $entity_info->getConfigPrefix());
-      }
-      $breakpoints = entity_load_multiple('breakpoint', $breakpoint_ids);
-
-      // Make sure we only delete breakpoints defined by this theme/module.
-      foreach ($breakpoints as $breakpoint) {
-        if ($breakpoint->sourceType == $source_type && $breakpoint->source == $breakpoint_group->name) {
-          $breakpoint->delete();
-        }
-      }
-    }
-  }
-
-  // Delete groups defined by a module/theme even if that module/theme didn't
-  // define any breakpoints.
-  foreach ($ids as $id) {
-    // Delete all breakpoint groups defined by the theme or module.
-    _breakpoint_delete_breakpoint_groups($id, $source_type);
-  }
-}
-
-/**
- * Remove breakpoint groups from all disabled themes or uninstalled modules.
- *
- * @param array $group_id
- *   Machine readable name of the breakpoint group.
- * @param string $source_type
- *   Either Breakpoint::SOURCE_TYPE_THEME or Breakpoint::SOURCE_TYPE_MODULE.
- */
-function _breakpoint_delete_breakpoint_groups($group_id, $source_type) {
-  $breakpoint_groups = entity_load_multiple('breakpoint_group');
-  foreach ($breakpoint_groups as $breakpoint_group) {
-    if ($breakpoint_group->sourceType == $source_type && $breakpoint_group->source == $group_id) {
-      $breakpoint_group->delete();
-    }
-  }
-}
-
-/**
- * Load one breakpoint by its identifier.
- *
- * @param int $id
- *   The id of the breakpoint to load.
- *
- * @return \Drupal\breakpoint\Entity\Breakpoint|null
- *   The entity object, or NULL if there is no entity with the given id.
- *
- * @todo Remove this in a follow-up issue.
- * @see http://drupal.org/node/1798214
- */
-function breakpoint_load($id) {
-  return entity_load('breakpoint', $id);
-}
-
-/**
  * Load all breakpoint groups as select options.
  *
  * @return array
@@ -162,7 +47,7 @@ function breakpoint_load($id) {
  */
 function breakpoint_group_select_options() {
   $options = array();
-  $breakpoint_groups = entity_load_multiple('breakpoint_group');
+  $breakpoint_groups = BreakpointGroup::loadMultiple();
   foreach ($breakpoint_groups as $breakpoint_group) {
     $options[$breakpoint_group->id()] = $breakpoint_group->label();
   }
@@ -178,7 +63,7 @@ function breakpoint_group_select_options() {
  */
 function breakpoint_select_options() {
   $options = array();
-  $breakpoints = entity_load_multiple('breakpoint');
+  $breakpoints = Breakpoint::loadMultiple();
   foreach ($breakpoints as $breakpoint) {
     $options[$breakpoint->id()] = $breakpoint->label() . ' (' . $breakpoint->source . ' - ' . $breakpoint->sourceType . ') [' . $breakpoint->mediaQuery . ']';
   }

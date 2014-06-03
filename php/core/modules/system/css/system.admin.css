@@ -269,9 +269,6 @@ table.system-status-report .status-title {
   height: auto;
   text-align: center;
 }
-.theme-selector .no-screenshot {
-  display: none;
-}
 .theme-default .screenshot {
   border: 1px solid #aaa;
 }
@@ -288,8 +285,8 @@ table.system-status-report .status-title {
 }
 
 /**
-* Theme display without vertical toolbar.
-*/
+ * Theme display without vertical toolbar.
+ */
 @media screen and (min-width: 45em) {
   body:not(.toolbar-vertical) .system-themes-list-enabled .screenshot,
   body:not(.toolbar-vertical) .system-themes-list-enabled .no-screenshot {
@@ -320,22 +317,11 @@ table.system-status-report .status-title {
   body:not(.toolbar-vertical) .system-themes-list-disabled .theme-info {
     min-height: 170px;
   }
-  body:not(.toolbar-vertical) .no-screenshot {
-    display: block;
-    padding-bottom: 57%;
-    position: relative;
-  }
-  body:not(.toolbar-vertical) .no-screenshot__text {
-    margin-top: -0.76em;
-    position: absolute;
-    top: 50%;
-    width: 100%;
-  }
 }
 
 /**
-* Theme display with vertical toolbar.
-*/
+ * Theme display with vertical toolbar.
+ */
 @media screen and (min-width: 60em) {
   .toolbar-vertical .system-themes-list-enabled .screenshot,
   .toolbar-vertical .system-themes-list-enabled .no-screenshot {
@@ -365,17 +351,6 @@ table.system-status-report .status-title {
   }
   .toolbar-vertical .system-themes-list-disabled .theme-info {
     min-height: 170px;
-  }
-  .toolbar-vertical .no-screenshot {
-    display: block;
-    padding-bottom: 57%;
-    position: relative;
-  }
-  .toolbar-vertical .no-screenshot__text {
-    margin-top: -0.76em;
-    position: absolute;
-    top: 50%;
-    width: 100%;
   }
 }
 .system-themes-list-enabled .theme-info {

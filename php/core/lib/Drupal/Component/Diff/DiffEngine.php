@@ -8,9 +8,9 @@
  * You may copy this code freely under the conditions of the GPL.
  */
 
-use Drupal\Component\Utility\Settings;
 use Drupal\Component\Utility\String;
 use Drupal\Component\Utility\Unicode;
+use Drupal\Core\Site\Settings;
 
 define('USE_ASSERTS', FALSE);
 
@@ -1100,8 +1100,8 @@ class DrupalDiffFormatter extends DiffFormatter {
   );
 
   function DrupalDiffFormatter() {
-    $this->leading_context_lines = Settings::getSingleton()->get('diff_context_lines_leading', 2);
-    $this->trailing_context_lines = Settings::getSingleton()->get('diff_context_lines_trailing', 2);
+    $this->leading_context_lines = Settings::get('diff_context_lines_leading', 2);
+    $this->trailing_context_lines = Settings::get('diff_context_lines_trailing', 2);
   }
 
   function _start_diff() {

@@ -9,38 +9,25 @@ use Drupal\Core\Entity\EntityInterface;
 use Drupal\comment\CommentInterface;
 use Drupal\node\NodeInterface;
 use Drupal\Core\Session\AccountInterface;
+use Symfony\Component\HttpFoundation\Request;
 
 /**
  * Implements hook_help().
  */
-function tracker_help($path, $arg) {
-  switch ($path) {
-    case 'admin/help#tracker':
+function tracker_help($route_name, Request $request) {
+  switch ($route_name) {
+    case 'help.page.tracker':
       $output = '<h3>' . t('About') . '</h3>';
-      $output .= '<p>' . t('The Tracker module displays the most recently added and updated content on your site, and allows you to follow new content created by each user. This module has no configuration options. For more information, see the online handbook entry for <a href="@tracker">Tracker module</a>.', array('@tracker' => 'http://drupal.org/documentation/modules/tracker')) . '</p>';
+      $output .= '<p>' . t('The Tracker module displays the most recently added and updated content on your site, and allows you to follow new content created by each user. This module has no configuration options. For more information, see the <a href="!tracker">online documentation for the Tracker module</a>.', array('!tracker' => 'https://drupal.org/documentation/modules/tracker')) . '</p>';
       $output .= '<h3>' . t('Uses') . '</h3>';
       $output .= '<dl>';
-      $output .= '<dt>' . t('Tracker navigation') . '</dt>';
-      $output .= '<dd>' . t('The Tracker module adds a new menu item to the Tools menu, called <em>Recent content</em>. You can configure menu items via the <a href="@menus">Menus administration page</a>.', array('@menus' => url('admin/structure/menu'))) . '</dd>';
       $output .= '<dt>' . t('Tracking new and updated site content') . '</dt>';
-      $output .= '<dd>' . t("The <a href='@recent'>Recent content</a> page shows new and updated content in reverse chronological order, listing the content type, title, author's name, number of comments, and time of last update. Content is considered updated when changes occur in the text, or when new comments are added. The <em>My recent content</em> tab limits the list to the currently logged-in user.", array('@recent' => url('tracker'))) . '</dd>';
+      $output .= '<dd>' . t('The <a href="!recent">Recent content</a> page shows new and updated content in reverse chronological order, listing the content type, title, author\'s name, number of comments, and time of last update. Content is considered updated when changes occur in the text, or when new comments are added. The <em>My recent content</em> tab limits the list to the currently logged-in user.', array('!recent' => \Drupal::url('tracker.page'))) . '</dd>';
       $output .= '<dt>' . t('Tracking user-specific content') . '</dt>';
       $output .= '<dd>' . t("To follow a specific user's new and updated content, select the <em>Track</em> tab from the user's profile page.") . '</dd>';
       $output .= '</dl>';
       return $output;
   }
-}
-
-/**
- * Implements hook_menu_link_defaults().
- */
-function tracker_menu_link_defaults() {
-  $links['tracker'] = array(
-    'link_title' => 'Recent content',
-    'route_name' => 'tracker.page',
-  );
-
-  return $links;
 }
 
 /**
@@ -206,8 +193,8 @@ function tracker_node_predelete(EntityInterface $node, $arg = 0) {
 function tracker_comment_update(CommentInterface $comment) {
   // $comment->save() calls hook_comment_publish() for all published comments
   // so we need to handle all other values here.
-  if ($comment->status->value != CommentInterface::PUBLISHED && $comment->entity_type->value == 'node') {
-    _tracker_remove($comment->entity_id->target_id, $comment->getOwnerId(), $comment->changed->value);
+  if (!$comment->isPublished() && $comment->getCommentedEntityTypeId() == 'node') {
+    _tracker_remove($comment->getCommentedEntityId(), $comment->getOwnerId(), $comment->getChangedTime());
   }
 }
 
@@ -218,8 +205,8 @@ function tracker_comment_update(CommentInterface $comment) {
  * $comment->save() calls hook_comment_publish() for all published comments.
  */
 function tracker_comment_publish(CommentInterface $comment) {
-  if ($comment->entity_type->value == 'node') {
-    _tracker_add($comment->entity_id->target_id, $comment->getOwnerId(), $comment->changed->value);
+  if ($comment->getCommentedEntityTypeId() == 'node') {
+    _tracker_add($comment->getCommentedEntityId(), $comment->getOwnerId(), $comment->getChangedTime());
   }
 }
 
@@ -227,8 +214,8 @@ function tracker_comment_publish(CommentInterface $comment) {
  * Implements hook_comment_unpublish().
  */
 function tracker_comment_unpublish(CommentInterface $comment) {
-  if ($comment->entity_type->value == 'node') {
-    _tracker_remove($comment->entity_id->target_id, $comment->getOwnerId(), $comment->changed->value);
+  if ($comment->getCommentedEntityTypeId() == 'node') {
+    _tracker_remove($comment->getCommentedEntityId(), $comment->getOwnerId(), $comment->getChangedTime());
   }
 }
 
@@ -236,8 +223,8 @@ function tracker_comment_unpublish(CommentInterface $comment) {
  * Implements hook_comment_delete().
  */
 function tracker_comment_delete(CommentInterface $comment) {
-  if ($comment->entity_type->value == 'node') {
-    _tracker_remove($comment->entity_id->target_id, $comment->getOwnerId(), $comment->changed->value);
+  if ($comment->getCommentedEntityTypeId() == 'node') {
+    _tracker_remove($comment->getCommentedEntityId(), $comment->getOwnerId(), $comment->getChangedTime());
   }
 }
 
@@ -262,7 +249,7 @@ function _tracker_add($nid, $uid, $changed) {
 
   // Update the node-level data.
   db_merge('tracker_node')
-    ->key(array('nid' => $nid))
+    ->key('nid', $nid)
     ->fields(array(
       'changed' => $changed,
       'published' => $node->status,
@@ -271,7 +258,7 @@ function _tracker_add($nid, $uid, $changed) {
 
   // Create or update the user-level data.
   db_merge('tracker_user')
-    ->key(array(
+    ->keys(array(
       'nid' => $nid,
       'uid' => $uid,
     ))

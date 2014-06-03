@@ -16,6 +16,7 @@
 
 use Drupal\Component\Utility\Timer;
 use Drupal\Core\Batch\Percentage;
+use Drupal\Core\Page\DefaultHtmlPageRenderer;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RedirectResponse;
@@ -47,42 +48,38 @@ function _batch_page(Request $request) {
   // Register database update for the end of processing.
   drupal_register_shutdown_function('_batch_shutdown');
 
+  $build = array();
+
   // Add batch-specific CSS.
-  $attached = array('#attached' => array('css' => array()));
   foreach ($batch['sets'] as $batch_set) {
     if (isset($batch_set['css'])) {
       foreach ($batch_set['css'] as $css) {
-        $attached['#attached']['css'][$css] = array();
+        $build['#attached']['css'][$css] = array();
       }
     }
   }
-  drupal_render($attached);
 
   $op = $request->get('op', '');
-  $output = NULL;
   switch ($op) {
     case 'start':
+    case 'do_nojs':
       // Display the full progress page on startup and on each additional
       // non-JavaScript iteration.
-      $output = _batch_progress_page();
+      $current_set = _batch_current_set();
+      $build['#title'] = $current_set['title'];
+      $build['content'] = _batch_progress_page();
       break;
 
     case 'do':
       // JavaScript-based progress page callback.
-      $output = _batch_do();
-      break;
-
-    case 'do_nojs':
-      // Non-JavaScript-based progress page.
-      $output = _batch_progress_page();
-      break;
+      return _batch_do();
 
     case 'finished':
-      $output = _batch_finished();
-      break;
+      // _batch_finished() returns a RedirectResponse.
+      return _batch_finished();
   }
 
-  return $output;
+  return $build;
 }
 
 /**
@@ -107,7 +104,6 @@ function _batch_progress_page() {
   $batch = &batch_get();
 
   $current_set = _batch_current_set();
-  drupal_set_title($current_set['title'], PASS_THROUGH);
 
   $new_op = 'do_nojs';
 
@@ -126,17 +122,14 @@ function _batch_progress_page() {
     // the error message.
     ob_start();
     $fallback = $current_set['error_message'] . '<br />' . $batch['error_message'];
-    $fallback = array(
-      '#theme' => 'maintenance_page',
-      '#content' => $fallback,
-      '#show_messages' => FALSE,
-    );
 
     // We strip the end of the page using a marker in the template, so any
     // additional HTML output by PHP shows up inside the page rather than below
     // it. While this causes invalid HTML, the same would be true if we didn't,
     // as content is not allowed to appear after </html> anyway.
-    $fallback = drupal_render($fallback);
+    $fallback = DefaultHtmlPageRenderer::renderPage($fallback, $current_set['title'], 'maintenance', array(
+      '#show_messages' => FALSE,
+    ));
     list($fallback) = explode('<!--partial-->', $fallback);
     print $fallback;
 
@@ -191,11 +184,11 @@ function _batch_progress_page() {
         ),
       ),
       'library' => array(
-        array('system', 'drupal.batch'),
+        'core/drupal.batch',
       ),
     ),
   );
-  return drupal_render($build);
+  return $build;
 }
 
 /**
@@ -411,7 +404,7 @@ function _batch_finished() {
       if (is_callable($batch_set['finished'])) {
         $queue = _batch_queue($batch_set);
         $operations = $queue->getAllItems();
-        $batch_set['finished']($batch_set['success'], $batch_set['results'], $operations, format_interval($batch_set['elapsed'] / 1000));
+        call_user_func_array($batch_set['finished'], array($batch_set['success'], $batch_set['results'], $operations, format_interval($batch_set['elapsed'] / 1000)));
       }
     }
   }

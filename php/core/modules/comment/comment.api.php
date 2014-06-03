@@ -24,7 +24,7 @@ use Drupal\comment\CommentInterface;
  */
 function hook_comment_presave(Drupal\comment\Comment $comment) {
   // Remove leading & trailing spaces from the comment subject.
-  $comment->subject->value = trim($comment->subject->value);
+  $comment->setSubject(trim($comment->getSubject()));
 }
 
 /**
@@ -35,8 +35,8 @@ function hook_comment_presave(Drupal\comment\Comment $comment) {
  */
 function hook_comment_insert(Drupal\comment\Comment $comment) {
   // Reindex the node when comments are added.
-  if ($comment->entity_type->value == 'node') {
-    node_reindex_node_search($comment->entity_id->value);
+  if ($comment->getCommentedEntityTypeId() == 'node') {
+    node_reindex_node_search($comment->getCommentedEntityId());
   }
 }
 
@@ -48,8 +48,8 @@ function hook_comment_insert(Drupal\comment\Comment $comment) {
  */
 function hook_comment_update(Drupal\comment\Comment $comment) {
   // Reindex the node when comments are updated.
-  if ($comment->entity_type->value == 'node') {
-    node_reindex_node_search($comment->entity_id->value);
+  if ($comment->getCommentedEntityTypeId() == 'node') {
+    node_reindex_node_search($comment->getCommentedEntityId());
   }
 }
 
@@ -84,10 +84,12 @@ function hook_comment_load(Drupal\comment\Comment $comments) {
 /**
  * Act on a comment that is being assembled before rendering.
  *
+ * @param array &$build
+ *   A renderable array representing the comment content.
  * @param \Drupal\comment\Entity\Comment $comment $comment
  *   Passes in the comment the action is being performed on.
  * @param \Drupal\Core\Entity\Display\EntityViewDisplayInterface $display
- *   The entity_display object holding the display options configured for the
+ *   The entity view display holding the display options configured for the
  *   comment components.
  * @param $view_mode
  *   View mode, e.g. 'full', 'teaser'...
@@ -96,12 +98,12 @@ function hook_comment_load(Drupal\comment\Comment $comments) {
  *
  * @see hook_entity_view()
  */
-function hook_comment_view(\Drupal\comment\Entity\Comment $comment, \Drupal\Core\Entity\Display\EntityViewDisplayInterface $display, $view_mode, $langcode) {
+function hook_comment_view(array &$build, \Drupal\comment\Entity\Comment $comment, \Drupal\Core\Entity\Display\EntityViewDisplayInterface $display, $view_mode, $langcode) {
   // Only do the extra work if the component is configured to be displayed.
   // This assumes a 'mymodule_addition' extra field has been defined for the
-  // node type in hook_field_extra_fields().
+  // node type in hook_entity_extra_field_info().
   if ($display->getComponent('mymodule_addition')) {
-    $comment->content['mymodule_addition'] = array(
+    $build['mymodule_addition'] = array(
       '#markup' => mymodule_addition($comment),
       '#theme' => 'mymodule_my_additional_field',
     );
@@ -120,18 +122,18 @@ function hook_comment_view(\Drupal\comment\Entity\Comment $comment, \Drupal\Core
  * callback. Alternatively, it could also implement hook_preprocess_HOOK() for
  * comment.html.twig. See drupal_render() documentation for details.
  *
- * @param $build
+ * @param array &$build
  *   A renderable array representing the comment.
  * @param \Drupal\comment\Entity\Comment $comment
  *   The comment being rendered.
  * @param \Drupal\Core\Entity\Display\EntityViewDisplayInterface $display
- *   The entity_display object holding the display options configured for the
+ *   The entity view display holding the display options configured for the
  *   comment components.
  *
  * @see comment_view()
  * @see hook_entity_view_alter()
  */
-function hook_comment_view_alter(&$build, \Drupal\comment\Entity\Comment $comment, \Drupal\Core\Entity\Display\EntityViewDisplayInterface $display) {
+function hook_comment_view_alter(array &$build, \Drupal\comment\Entity\Comment $comment, \Drupal\Core\Entity\Display\EntityViewDisplayInterface $display) {
   // Check for the existence of a field added by another module.
   if ($build['#view_mode'] == 'full' && isset($build['an_additional_field'])) {
     // Change its weight.
@@ -149,7 +151,7 @@ function hook_comment_view_alter(&$build, \Drupal\comment\Entity\Comment $commen
  *   The comment the action is being performed on.
  */
 function hook_comment_publish(Drupal\comment\Comment $comment) {
-  drupal_set_message(t('Comment: @subject has been published', array('@subject' => $comment->subject->value)));
+  drupal_set_message(t('Comment: @subject has been published', array('@subject' => $comment->getSubject())));
 }
 
 /**
@@ -159,7 +161,7 @@ function hook_comment_publish(Drupal\comment\Comment $comment) {
  *   The comment the action is being performed on.
  */
 function hook_comment_unpublish(Drupal\comment\Comment $comment) {
-  drupal_set_message(t('Comment: @subject has been unpublished', array('@subject' => $comment->subject->value)));
+  drupal_set_message(t('Comment: @subject has been unpublished', array('@subject' => $comment->getSubject())));
 }
 
 /**
@@ -194,7 +196,7 @@ function hook_comment_predelete(Drupal\comment\Comment $comment) {
  * @see entity_delete_multiple()
  */
 function hook_comment_delete(Drupal\comment\Comment $comment) {
-  drupal_set_message(t('Comment: @subject has been deleted', array('@subject' => $comment->subject->value)));
+  drupal_set_message(t('Comment: @subject has been deleted', array('@subject' => $comment->getSubject())));
 }
 
 /**

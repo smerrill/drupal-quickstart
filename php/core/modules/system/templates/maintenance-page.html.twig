@@ -3,8 +3,7 @@
  * @file
  * Default theme implementation to display a single Drupal page while offline.
  *
- * All the available variables are mirrored in html.html.twig and
- * page.html.twig.
+ * All available variables are mirrored in page.html.twig.
  * Some may be blank but they are provided for consistency.
  *
  * @see template_preprocess_maintenance_page()
@@ -12,16 +11,6 @@
  * @ingroup themeable
  */
 #}
-<!DOCTYPE html>
-<html{{ html_attributes }}>
-<head>
-  {{ head }}
-  <title>{{ head_title }}</title>
-  {{ styles }}
-  {{ scripts }}
-</head>
-<body class="{{ attributes.class }}">
-
 <div class="l-container">
 
   <header role="banner">
@@ -54,7 +43,7 @@
 
     {{ messages }}
 
-    {{ content }}
+    {{ page.content }}
   </main>
 
   {% if page.sidebar_first %}
@@ -76,6 +65,3 @@
   {% endif %}
 
 </div>{# /.l-container #}
-
-</body>
-</html>

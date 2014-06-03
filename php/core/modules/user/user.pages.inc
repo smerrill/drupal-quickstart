@@ -5,6 +5,7 @@
  * User page callback file for the user module.
  */
 
+use Drupal\Core\Render\Element;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
@@ -14,7 +15,8 @@ use Drupal\Component\Utility\Crypt;
 /**
  * Menu callback; process one time login link and redirects to the user page on success.
  *
- * @deprecated Use \Drupal\user\Form\UserForm::resetPass()
+ * @deprecated in Drupal 8.x-dev, will be removed before Drupal 8.0.
+ *   Use \Drupal\user\Form\UserForm::resetPass().
  */
 function user_pass_reset($form, &$form_state, $uid, $timestamp, $hashed_pass, $action = NULL) {
   global $user;
@@ -61,7 +63,7 @@ function user_pass_reset($form, &$form_state, $uid, $timestamp, $hashed_pass, $a
           watchdog('user', 'User %name used one-time login link at time %timestamp.', array('%name' => $account->getUsername(), '%timestamp' => $timestamp));
           drupal_set_message(t('You have just used your one-time login link. It is no longer necessary to use this link to log in. Please change your password.'));
           // Let the user's password be changed without the current password check.
-          $token = Crypt::randomStringHashed(55);
+          $token = Crypt::randomBytesBase64(55);
           $_SESSION['pass_reset_' . $user->id()] = $token;
           return new RedirectResponse(url('user/' . $user->id() . '/edit', array(
             'query' => array('pass-reset-token' => $token),
@@ -109,7 +111,7 @@ function template_preprocess_user(&$variables) {
   $account = $variables['elements']['#user'];
 
   // Helpful $content variable for templates.
-  foreach (element_children($variables['elements']) as $key) {
+  foreach (Element::children($variables['elements']) as $key) {
     $variables['content'][$key] = $variables['elements'][$key];
   }
 
@@ -123,7 +125,8 @@ function template_preprocess_user(&$variables) {
  * @see user_cancel_confirm_form()
  * @see user_cancel_url()
  *
- * @deprecated Use \Drupal\user\Controller\UserController::confirmCancel()
+ * @deprecated in Drupal 8.x-dev, will be removed before Drupal 8.0.
+ *   Use \Drupal\user\Controller\UserController::confirmCancel().
  */
 function user_cancel_confirm($account, $timestamp = 0, $hashed_pass = '') {
   // Time out in seconds until cancel URL expires; 24 hours = 86400 seconds.

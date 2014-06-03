@@ -5,9 +5,12 @@
  * API for handling file uploads and server file management.
  */
 
+use Drupal\Component\Utility\UrlHelper;
 use Drupal\Core\StreamWrapper\LocalStream;
-use Drupal\Component\PhpStorage\MTimeProtectedFastFileStorage;
+use Drupal\Component\PhpStorage\FileStorage;
+use Drupal\Component\Utility\Bytes;
 use Drupal\Component\Utility\String;
+use Drupal\Core\Site\Settings;
 use Drupal\Core\StreamWrapper\PublicStream;
 
 /**
@@ -108,8 +111,10 @@ define('STREAM_WRAPPERS_LOCAL_NORMAL', STREAM_WRAPPERS_LOCAL | STREAM_WRAPPERS_N
  * - filesize: The size of the file in bytes.
  * - status: A bitmapped field indicating the status of the file. The first 8
  *   bits are reserved for Drupal core. The least significant bit indicates
- *   temporary (0) or permanent (1). Temporary files older than
- *   DRUPAL_MAXIMUM_TEMP_FILE_AGE will be removed during cron runs.
+ *   temporary (0) or permanent (1). Temporary files will be removed during
+ *   cron runs if they are older than the configuration value
+ *   "system.file.temporary_maximum_age", and if clean-up is enabled. Permanent
+ *   files will not be removed.
  * - timestamp: UNIX timestamp for the date the file was added to the database.
  */
 
@@ -141,9 +146,10 @@ const FILE_EXISTS_ERROR = 2;
 /**
  * Indicates that the file is permanent and should not be deleted.
  *
- * Temporary files older than DRUPAL_MAXIMUM_TEMP_FILE_AGE will be removed
- * during cron runs, but permanent files will not be removed during the file
- * garbage collection process.
+ * Temporary files older than the system.file.temporary_maximum_age
+ * configuration value will be, if clean-up not disabled, removed during cron
+ * runs, but permanent files will not be removed during the file garbage
+ * collection process.
  */
 const FILE_STATUS_PERMANENT = 1;
 
@@ -199,12 +205,14 @@ const FILE_STATUS_PERMANENT = 1;
  * @see hook_stream_wrappers_alter()
  */
 function file_get_stream_wrappers($filter = STREAM_WRAPPERS_ALL) {
-  $wrappers_storage = &drupal_static(__FUNCTION__);
+  $wrappers_storage = &drupal_static(__FUNCTION__, array());
 
-  if (!isset($wrappers_storage)) {
+  if (empty($wrappers_storage)) {
+    // Initialize $wrappers_storage, so that we are not calling this method
+    // repeatedly if no stream wrappers exist.
+    $wrappers_storage[STREAM_WRAPPERS_ALL] = array();
     $wrappers = array();
-    $container = \Drupal::getContainer();
-    if (is_object($container) && $container->has('module_handler')) {
+    if (\Drupal::hasService('module_handler')) {
       $wrappers = \Drupal::moduleHandler()->invokeAll('stream_wrappers');
       foreach ($wrappers as $scheme => $info) {
         // Add defaults.
@@ -448,7 +456,7 @@ function file_stream_wrapper_get_instance_by_scheme($scheme) {
 function file_create_url($uri) {
   // Allow the URI to be altered, e.g. to serve a file from a CDN or static
   // file server.
-  drupal_alter('file_url', $uri);
+  \Drupal::moduleHandler()->alter('file_url', $uri);
 
   $scheme = file_uri_scheme($uri);
 
@@ -466,7 +474,7 @@ function file_create_url($uri) {
     else {
       // If this is not a properly formatted stream, then it is a shipped file.
       // Therefore, return the urlencoded URI with the base URL prepended.
-      return $GLOBALS['base_url'] . '/' . drupal_encode_path($uri);
+      return $GLOBALS['base_url'] . '/' . UrlHelper::encodePath($uri);
     }
   }
   elseif ($scheme == 'http' || $scheme == 'https') {
@@ -579,17 +587,16 @@ function file_ensure_htaccess() {
 /**
  * Creates a .htaccess file in the given directory.
  *
- * @param $directory
+ * @param string $directory
  *   The directory.
- * @param $private
- *   FALSE indicates that $directory should be an open and public directory.
- *   The default is TRUE which indicates a private and protected directory.
- *
- * @return bool
- *   TRUE if the .htaccess file could be created or existed already, FALSE
- *   otherwise.
+ * @param bool $private
+ *   (Optional) FALSE indicates that $directory should be a web-accessible
+ *   directory. Defaults to TRUE which indicates a private directory.
+ * @param bool $force_overwrite
+ *   (Optional) Set to TRUE to attempt to overwrite the existing .htaccess file
+ *   if one is already present. Defaults to FALSE.
  */
-function file_save_htaccess($directory, $private = TRUE) {
+function file_save_htaccess($directory, $private = TRUE, $force_overwrite = FALSE) {
   if (file_uri_scheme($directory)) {
     $htaccess_path = file_stream_wrapper_uri_normalize($directory . '/.htaccess');
   }
@@ -598,19 +605,11 @@ function file_save_htaccess($directory, $private = TRUE) {
     $htaccess_path = $directory . '/.htaccess';
   }
 
-  if (file_exists($htaccess_path)) {
+  if (file_exists($htaccess_path) && !$force_overwrite) {
     // Short circuit if the .htaccess file already exists.
     return TRUE;
   }
-
-  if ($private) {
-    // Private .htaccess file.
-    $htaccess_lines = MTimeProtectedFastFileStorage::HTACCESS;
-  }
-  else {
-    // Public .htaccess file.
-    $htaccess_lines = "SetHandler Drupal_Security_Do_Not_Remove_See_SA_2006_006\nOptions None\nOptions +FollowSymLinks";
-  }
+  $htaccess_lines = file_htaccess_lines($private);
 
   // Write the .htaccess file.
   if (file_exists($directory) && is_writable($directory) && file_put_contents($htaccess_path, $htaccess_lines)) {
@@ -621,6 +620,23 @@ function file_save_htaccess($directory, $private = TRUE) {
     watchdog('security', "Security warning: Couldn't write .htaccess file. Please create a .htaccess file in your %directory directory which contains the following lines: <code>!htaccess</code>", $variables, WATCHDOG_ERROR);
     return FALSE;
   }
+}
+
+/**
+ * Returns the standard .htaccess lines that Drupal writes to file directories.
+ *
+ * @param bool $private
+ *   (Optional) Set to FALSE to return the .htaccess lines for a web-accessible
+ *   public directory. The default is TRUE, which returns the .htaccess lines
+ *   for a private directory that should not be web-accessible.
+ *
+ * @return string
+ *   The desired contents of the .htaccess file.
+ *
+ * @see file_create_htaccess()
+ */
+function file_htaccess_lines($private = TRUE) {
+  return FileStorage::htaccessLines($private);
 }
 
 /**
@@ -658,7 +674,7 @@ function file_valid_uri($uri) {
  *   will rename the file until the $destination is unique.
  * - Provides a fallback using realpaths if the move fails using stream
  *   wrappers. This can occur because PHP's copy() function does not properly
- *   support streams if safe_mode or open_basedir are enabled. See
+ *   support streams if open_basedir is enabled. See
  *   https://bugs.php.net/bug.php?id=60456
  *
  * @param $source
@@ -1079,8 +1095,8 @@ function file_unmanaged_delete_recursive($path, $callback = NULL) {
 /**
  * Moves an uploaded file to a new location.
  *
- * PHP's move_uploaded_file() does not properly support streams if safe_mode
- * or open_basedir are enabled, so this function fills that gap.
+ * PHP's move_uploaded_file() does not properly support streams if open_basedir
+ * is enabled, so this function fills that gap.
  *
  * Compatibility: normal paths and stream wrappers.
  *
@@ -1098,9 +1114,9 @@ function file_unmanaged_delete_recursive($path, $callback = NULL) {
  */
 function drupal_move_uploaded_file($filename, $uri) {
   $result = @move_uploaded_file($filename, $uri);
-  // PHP's move_uploaded_file() does not properly support streams if safe_mode
-  // or open_basedir are enabled so if the move failed, try finding a real path
-  // and retry the move operation.
+  // PHP's move_uploaded_file() does not properly support streams if
+  // open_basedir is enabled so if the move failed, try finding a real path and
+  // retry the move operation.
   if (!$result) {
     if ($realpath = drupal_realpath($uri)) {
       $result = move_uploaded_file($filename, $realpath);
@@ -1256,11 +1272,11 @@ function file_upload_max_size() {
 
   if ($max_size < 0) {
     // Start with post_max_size.
-    $max_size = parse_size(ini_get('post_max_size'));
+    $max_size = Bytes::toInt(ini_get('post_max_size'));
 
     // If upload_max_size is less, then reduce. Except if upload_max_size is
     // zero, which indicates no limit.
-    $upload_max = parse_size(ini_get('upload_max_filesize'));
+    $upload_max = Bytes::toInt(ini_get('upload_max_filesize'));
     if ($upload_max > 0 && $upload_max < $max_size) {
       $max_size = $upload_max;
     }
@@ -1326,25 +1342,15 @@ function file_get_mimetype($uri, $mapping = NULL) {
 function drupal_chmod($uri, $mode = NULL) {
   if (!isset($mode)) {
     if (is_dir($uri)) {
-      $mode = settings()->get('file_chmod_directory', FILE_CHMOD_DIRECTORY);
+      $mode = Settings::get('file_chmod_directory', FILE_CHMOD_DIRECTORY);
     }
     else {
-      $mode = settings()->get('file_chmod_file', FILE_CHMOD_FILE);
+      $mode = Settings::get('file_chmod_file', FILE_CHMOD_FILE);
     }
   }
 
-  // If this URI is a stream, pass it off to the appropriate stream wrapper.
-  // Otherwise, attempt PHP's chmod. This allows use of drupal_chmod even
-  // for unmanaged files outside of the stream wrapper interface.
-  if ($wrapper = file_stream_wrapper_get_instance_by_uri($uri)) {
-    if ($wrapper->chmod($mode)) {
-      return TRUE;
-    }
-  }
-  else {
-    if (@chmod($uri, $mode)) {
-      return TRUE;
-    }
+  if (@chmod($uri, $mode)) {
+    return TRUE;
   }
 
   watchdog('file', 'The file permissions could not be set on %uri.', array('%uri' => $uri), WATCHDOG_ERROR);
@@ -1503,7 +1509,7 @@ function drupal_basename($uri, $suffix = NULL) {
  */
 function drupal_mkdir($uri, $mode = NULL, $recursive = FALSE, $context = NULL) {
   if (!isset($mode)) {
-    $mode = settings()->get('file_chmod_directory', FILE_CHMOD_DIRECTORY);
+    $mode = Settings::get('file_chmod_directory', FILE_CHMOD_DIRECTORY);
   }
 
   // If the URI has a scheme, don't override the umask - schemes can handle this

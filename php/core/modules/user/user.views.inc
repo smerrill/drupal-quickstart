@@ -267,18 +267,20 @@ function user_views_data() {
     ),
   );
 
-  $data['users']['signature'] = array(
-    'title' => t('Signature'),
-    'help' => t("The user's signature."),
-    'field' => array(
-      'id' => 'markup',
-      'format' => filter_fallback_format(),
-      'click sortable' => FALSE,
-    ),
-    'filter' => array(
-      'id' => 'string',
-    ),
-  );
+  if (\Drupal::moduleHandler()->moduleExists('filter')) {
+    $data['users']['signature'] = array(
+      'title' => t('Signature'),
+      'help' => t("The user's signature."),
+      'field' => array(
+        'id' => 'markup',
+        'format' => filter_fallback_format(),
+        'click sortable' => FALSE,
+      ),
+      'filter' => array(
+        'id' => 'string',
+      ),
+    );
+  }
 
   if (\Drupal::moduleHandler()->moduleExists('content_translation')) {
     $data['users']['translation_link'] = array(
@@ -377,4 +379,13 @@ function user_views_data_alter(&$data) {
       'id' => 'user_bulk_form',
     ),
   );
+}
+
+/**
+ * Implements hook_views_plugins_argument_validator_alter().
+ */
+function user_views_plugins_argument_validator_alter(array &$plugins) {
+  $plugins['entity:user']['title'] = t('User ID');
+  $plugins['entity:user']['class'] = 'Drupal\user\Plugin\views\argument_validator\User';
+  $plugins['entity:user']['provider'] = 'user';
 }

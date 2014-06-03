@@ -43,12 +43,12 @@ class EntityAccessController extends EntityControllerBase implements EntityAcces
   /**
    * Constructs an access controller instance.
    *
-   * @param \Drupal\Core\Entity\EntityTypeInterface $entity_info
-   *   The entity info for the entity type.
+   * @param \Drupal\Core\Entity\EntityTypeInterface $entity_type
+   *   The entity type definition.
    */
-  public function __construct(EntityTypeInterface $entity_info) {
-    $this->entityTypeId = $entity_info->id();
-    $this->entityType = $entity_info;
+  public function __construct(EntityTypeInterface $entity_type) {
+    $this->entityTypeId = $entity_type->id();
+    $this->entityType = $entity_type;
   }
 
   /**
@@ -129,6 +129,9 @@ class EntityAccessController extends EntityControllerBase implements EntityAcces
    *   could not be determined.
    */
   protected function checkAccess(EntityInterface $entity, $operation, $langcode, AccountInterface $account) {
+    if ($operation == 'delete' && $entity->isNew()) {
+      return FALSE;
+    }
     if ($admin_permission = $this->entityType->getAdminPermission()) {
       return $account->hasPermission($admin_permission);
     }
@@ -269,7 +272,7 @@ class EntityAccessController extends EntityControllerBase implements EntityAcces
    */
   protected function prepareUser(AccountInterface $account = NULL) {
     if (!$account) {
-      $account = $GLOBALS['user'];
+      $account = \Drupal::currentUser();
     }
     return $account;
   }

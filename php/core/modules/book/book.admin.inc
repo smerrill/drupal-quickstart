@@ -5,9 +5,7 @@
  * Administration page callbacks for the Book module.
  */
 
-use Drupal\Component\Utility\Crypt;
-use Drupal\Core\Entity\EntityInterface;
-use Drupal\Core\Language\Language;
+use Drupal\Core\Render\Element;
 
 /**
  * Returns HTML for a book administration form.
@@ -27,20 +25,20 @@ function theme_book_admin_table($variables) {
   $rows = array();
   $destination = drupal_get_destination();
   $access = \Drupal::currentUser()->hasPermission('administer nodes');
-  foreach (element_children($form) as $key) {
+  foreach (Element::children($form) as $key) {
     $nid = $form[$key]['nid']['#value'];
-    $href = $form[$key]['href']['#value'];
+    $href = \Drupal::url('node.view', array('node' => $nid));
 
     // Add special classes to be used with tabledrag.js.
-    $form[$key]['plid']['#attributes']['class'] = array('book-plid');
-    $form[$key]['mlid']['#attributes']['class'] = array('book-mlid');
+    $form[$key]['pid']['#attributes']['class'] = array('book-pid');
+    $form[$key]['nid']['#attributes']['class'] = array('book-nid');
     $form[$key]['weight']['#attributes']['class'] = array('book-weight');
 
     $indentation = array('#theme' => 'indentation', '#size' => $form[$key]['depth']['#value'] - 2);
     $data = array(
       drupal_render($indentation) . drupal_render($form[$key]['title']),
       drupal_render($form[$key]['weight']),
-      drupal_render($form[$key]['plid']) . drupal_render($form[$key]['mlid']),
+      drupal_render($form[$key]['pid']) . drupal_render($form[$key]['nid']),
     );
     $links = array();
     $links['view'] = array(
@@ -84,9 +82,9 @@ function theme_book_admin_table($variables) {
       array(
         'action' => 'match',
         'relationship' => 'parent',
-        'group' => 'book-plid',
-        'subgroup' => 'book-plid',
-        'source' => 'book-mlid',
+        'group' => 'book-pid',
+        'subgroup' => 'book-pid',
+        'source' => 'book-nid',
         'hidden' => TRUE,
         'limit' => MENU_MAX_DEPTH - 2,
       ),

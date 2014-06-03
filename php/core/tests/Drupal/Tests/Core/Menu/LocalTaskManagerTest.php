@@ -11,6 +11,7 @@ use Drupal\Core\Cache\Cache;
 use Drupal\Core\Language\Language;
 use Drupal\Tests\UnitTestCase;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RequestStack;
 use Zend\Stdlib\ArrayObject;
 
 /**
@@ -47,6 +48,13 @@ class LocalTaskManagerTest extends UnitTestCase {
    * @var \PHPUnit_Framework_MockObject_MockObject
    */
   protected $routeProvider;
+
+  /**
+   * The mocked route builder.
+   *
+   * @var \Drupal\Core\Routing\RouteBuilderInterface|\PHPUnit_Framework_MockObject_MockObject
+   */
+  protected $routeBuilder;
 
   /**
    * The mocked plugin discovery.
@@ -93,6 +101,7 @@ class LocalTaskManagerTest extends UnitTestCase {
     $this->controllerResolver = $this->getMock('Symfony\Component\HttpKernel\Controller\ControllerResolverInterface');
     $this->request = new Request();
     $this->routeProvider = $this->getMock('Drupal\Core\Routing\RouteProviderInterface');
+    $this->routeBuilder = $this->getMock('Drupal\Core\Routing\RouteBuilderInterface');
     $this->pluginDiscovery = $this->getMock('Drupal\Component\Plugin\Discovery\DiscoveryInterface');
     $this->factory = $this->getMock('Drupal\Component\Plugin\Factory\FactoryInterface');
     $this->cacheBackend = $this->getMock('Drupal\Core\Cache\CacheBackendInterface');
@@ -180,6 +189,9 @@ class LocalTaskManagerTest extends UnitTestCase {
       ->method('set')
       ->with('local_task:en', $definitions, Cache::PERMANENT);
 
+    $this->routeBuilder->expects($this->once())
+      ->method('rebuildIfNeeded');
+
     $expected_set = $this->getLocalTasksCache();
 
     $this->cacheBackend->expects($this->at(3))
@@ -211,6 +223,9 @@ class LocalTaskManagerTest extends UnitTestCase {
 
     $this->cacheBackend->expects($this->never())
       ->method('set');
+
+    $this->routeBuilder->expects($this->never())
+      ->method('rebuildIfNeeded');
 
     $result = $this->getLocalTasksForRouteResult($mock_plugin);
     $local_tasks = $this->manager->getLocalTasksForRoute('menu_local_task_test_tasks_view');
@@ -249,13 +264,19 @@ class LocalTaskManagerTest extends UnitTestCase {
     $property->setAccessible(TRUE);
     $property->setValue($this->manager, $this->controllerResolver);
 
-    $property = new \ReflectionProperty('Drupal\Core\Menu\LocalTaskManager', 'request');
+    $request_stack = new RequestStack();
+    $request_stack->push($this->request);
+    $property = new \ReflectionProperty('Drupal\Core\Menu\LocalTaskManager', 'requestStack');
     $property->setAccessible(TRUE);
-    $property->setValue($this->manager, $this->request);
+    $property->setValue($this->manager, $request_stack);
 
     $property = new \ReflectionProperty('Drupal\Core\Menu\LocalTaskManager', 'accessManager');
     $property->setAccessible(TRUE);
     $property->setValue($this->manager, $this->accessManager);
+
+    $property = new \ReflectionProperty('Drupal\Core\Menu\LocalTaskManager', 'routeBuilder');
+    $property->setAccessible(TRUE);
+    $property->setValue($this->manager, $this->routeBuilder);
 
     $property = new \ReflectionProperty('Drupal\Core\Menu\LocalTaskManager', 'discovery');
     $property->setAccessible(TRUE);
@@ -376,7 +397,7 @@ class LocalTaskManagerTest extends UnitTestCase {
    */
   protected function getLocalTasksCache() {
     $local_task_fixtures = $this->getLocalTaskFixtures();
-    return array(
+    $local_tasks = array(
       'base_routes' => array(
         'menu_local_task_test_tasks_view' => 'menu_local_task_test_tasks_view',
       ),
@@ -396,6 +417,12 @@ class LocalTaskManagerTest extends UnitTestCase {
         ),
       ),
     );
+    $local_tasks['children']['> menu_local_task_test_tasks_view']['menu_local_task_test_tasks_settings']['weight'] = 0;
+    $local_tasks['children']['> menu_local_task_test_tasks_view']['menu_local_task_test_tasks_edit']['weight'] = 20 + 1e-6;
+    $local_tasks['children']['> menu_local_task_test_tasks_view']['menu_local_task_test_tasks_view.tab']['weight'] = 2e-6;
+    $local_tasks['children']['menu_local_task_test_tasks_view.tab']['menu_local_task_test_tasks_view_child1']['weight'] = 3e-6;
+    $local_tasks['children']['menu_local_task_test_tasks_view.tab']['menu_local_task_test_tasks_view_child2']['weight'] = 4e-6;
+    return $local_tasks;
   }
 
 }

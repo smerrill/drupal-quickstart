@@ -1,3 +1,6 @@
+/**
+ * Base framework for Drupal-specific JavaScript, behaviors, and settings.
+ */
 window.Drupal = { behaviors: {}, locale: {} };
 
 // Class indicating that JS is enabled; used for styling purpose.
@@ -276,7 +279,8 @@ if (window.jQuery) {
 
     if (keys.length) {
       for (var i = 0; i < fragments.length; i++) {
-        fragments[i] = Drupal.stringReplace(fragments[i], args, keys);
+        // Process each fragment with a copy of remaining keys.
+        fragments[i] = Drupal.stringReplace(fragments[i], args, keys.slice(0));
       }
     }
 
@@ -360,13 +364,17 @@ if (window.jQuery) {
     args = args || {};
     args['@count'] = count;
 
-    var pluralDelimiter = Drupal.locale.pluralDelimiter;
+    var pluralDelimiter = drupalSettings.locale.pluralDelimiter,
+      translations = Drupal.t(singular + pluralDelimiter + plural, args, options).split(pluralDelimiter),
+      index = 0;
 
     // Determine the index of the plural form.
-    var index = Drupal.locale.pluralFormula ? Drupal.locale.pluralFormula(args['@count']) : ((args['@count'] === 1) ? 0 : 1);
-    var translations = Drupal
-      .t(singular + pluralDelimiter + plural, args, options)
-      .split(pluralDelimiter);
+    if (Drupal.locale.pluralFormula) {
+      index = count in Drupal.locale.pluralFormula ? Drupal.locale.pluralFormula[count] : Drupal.locale.pluralFormula['default'];
+    }
+    else if (args['@count'] !== 1) {
+      index = 1;
+    }
 
     return translations[index];
   };

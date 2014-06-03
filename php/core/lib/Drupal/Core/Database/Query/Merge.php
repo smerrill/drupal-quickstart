@@ -124,15 +124,15 @@ class Merge extends Query implements ConditionInterface {
   protected $needsUpdate = FALSE;
 
   /**
-  * Constructs a Merge object.
-  *
-  * @param \Drupal\Core\Database\Connection $connection
-  *   A Connection object.
-  * @param string $table
-  *   Name of the table to associate with this query.
-  * @param array $options
-  *   Array of database options.
-  */
+   * Constructs a Merge object.
+   *
+   * @param \Drupal\Core\Database\Connection $connection
+   *   A Connection object.
+   * @param string $table
+   *   Name of the table to associate with this query.
+   * @param array $options
+   *   Array of database options.
+   */
   public function __construct(Connection $connection, $table, array $options = array()) {
     $options['return'] = Database::RETURN_AFFECTED;
     parent::__construct($connection, $options);
@@ -282,7 +282,7 @@ class Merge extends Query implements ConditionInterface {
   }
 
   /**
-   * Sets the key field(s) to be used as conditions for this query.
+   * Sets the key fields to be used as conditions for this query.
    *
    * This method should only be called once. It may be called either
    * with a single associative array or two indexed arrays. If called
@@ -300,16 +300,41 @@ class Merge extends Query implements ConditionInterface {
    *   An array of values to set into the database. The values must be
    *   specified in the same order as the $fields array.
    *
-   * @return \Drupal\Core\Database\Query\Merge
-   *   The called object.
+   * @return $this
    */
-  public function key(array $fields, array $values = array()) {
+  public function keys(array $fields, array $values = array()) {
     if ($values) {
       $fields = array_combine($fields, $values);
     }
     foreach ($fields as $key => $value) {
       $this->insertFields[$key] = $value;
       $this->condition($key, $value);
+    }
+    return $this;
+  }
+
+  /**
+   * Sets a single key field to be used as condition for this query.
+   *
+   * Same as \Drupal\Core\Database\Query\Merge::keys() but offering a signature
+   * that is more natural for the case of a single key.
+   *
+   * @param string $field
+   *   The name of the field to set.
+   * @param mixed $value
+   *   The value to set into the database.
+   *
+   * @return $this
+   *
+   * @see \Drupal\Core\Database\Query\Merge::keys()
+   */
+  public function key($field, $value = NULL) {
+    // @todo D9: Remove this backwards-compatibility shim.
+    if (is_array($field)) {
+      $this->keys($field, isset($value) ? $value : array());
+    }
+    else {
+      $this->keys(array($field => $value));
     }
     return $this;
   }

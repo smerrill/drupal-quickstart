@@ -8,6 +8,7 @@
 namespace Drupal\Core\Annotation;
 
 use Drupal\Component\Annotation\AnnotationBase;
+use Drupal\Core\StringTranslation\StringTranslationTrait;
 
 /**
  * @defgroup plugin_translatable Translatable plugin metadata
@@ -23,6 +24,11 @@ use Drupal\Component\Annotation\AnnotationBase;
  * @endcode
  * Remove spaces after @ in your actual plugin - these are put into this sample
  * code so that it is not recognized as annotation.
+ *
+ * To provide replacement values for placeholders, use the "arguments" array:
+ * @code
+ *   title = @ Translation("Bundle !title", arguments = {"!title" = "Foo"}),
+ * @endcode
  *
  * It is also possible to provide a context with the text, similar to t():
  * @code
@@ -46,6 +52,7 @@ use Drupal\Component\Annotation\AnnotationBase;
  * @ingroup plugin_translatable
  */
 class Translation extends AnnotationBase {
+  use StringTranslationTrait;
 
   /**
    * The translation of the value passed to the constructor of the class.
@@ -55,20 +62,28 @@ class Translation extends AnnotationBase {
   protected $translation;
 
   /**
-   * Constructs a Translation object.
+   * Constructs a new class instance.
    *
    * Parses values passed into this class through the t() function in Drupal and
    * handles an optional context for the string.
+   *
+   * @param array $values
+   *   Possible array keys:
+   *   - value (required): the string that is to be translated.
+   *   - arguments (optional): an array with placeholder replacements, keyed by
+   *     placeholder.
+   *   - context (optional): a string that describes the context of "value";
    */
-  public function __construct($values) {
+  public function __construct(array $values) {
     $string = $values['value'];
+    $arguments = isset($values['arguments']) ? $values['arguments'] : array();
     $options = array();
     if (!empty($values['context'])) {
       $options = array(
         'context' => $values['context'],
       );
     }
-    $this->translation = t($string, array(), $options);
+    $this->translation = $this->t($string, $arguments, $options);
   }
 
   /**

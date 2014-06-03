@@ -22,7 +22,8 @@ use Drupal\Core\TypedData\TypedDataInterface;
  *
  * @DataType(
  *   id = "list",
- *   label = @Translation("List of items")
+ *   label = @Translation("List of items"),
+ *   definition_class = "\Drupal\Core\TypedData\ListDataDefinition"
  * )
  */
 class ItemList extends TypedData implements \IteratorAggregate, ListInterface {
@@ -55,7 +56,7 @@ class ItemList extends TypedData implements \IteratorAggregate, ListInterface {
    */
   public function setValue($values, $notify = TRUE) {
     if (!isset($values) || $values === array()) {
-      $this->list = $values;
+      $this->list = array();
     }
     else {
       if (!is_array($values)) {

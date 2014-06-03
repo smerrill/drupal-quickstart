@@ -7,6 +7,7 @@
 
 use Drupal\Component\Utility\String;
 use Drupal\Core\Language\Language;
+use Drupal\Core\Render\Element;
 use Drupal\locale\SourceString;
 use Drupal\locale\TranslationString;
 use Symfony\Component\HttpFoundation\RedirectResponse;
@@ -41,7 +42,8 @@ function locale_translation_manual_status() {
  *
  * @see locale_menu()
  *
- * @deprecated Use \Drupal\locale\Form\LocaleForm::status()
+ * @deprecated in Drupal 8.x-dev, will be removed before Drupal 8.0.
+ *   Use \Drupal\locale\Form\LocaleForm::status().
  */
 function locale_translation_status_form($form, &$form_state) {
   module_load_include('translation.inc', 'locale');
@@ -160,8 +162,7 @@ function locale_translation_status_form($form, &$form_state) {
     '#after_build' => array('locale_translation_language_table'),
   );
 
-  $form['#attached']['library'][] = array('locale', 'drupal.locale.admin');
-  $form['#attached']['css'] = array(drupal_get_path('module', 'locale') . '/css/locale.admin.css');
+  $form['#attached']['library'][] = 'locale/drupal.locale.admin';
 
   $form['actions'] = array('#type' => 'actions');
   if ($languages_update) {
@@ -282,7 +283,7 @@ function theme_locale_translate_edit_form_strings($variables) {
     t('Translation for @language', array('@language' => $form['#language'])),
   );
   $rows = array();
-  foreach (element_children($form) as $lid) {
+  foreach (Element::children($form) as $lid) {
     $string = $form[$lid];
     if ($string['plural']['#value']) {
       $source = drupal_render($string['original_singular']) . '<br />' . drupal_render($string['original_plural']);
@@ -297,7 +298,7 @@ function theme_locale_translate_edit_form_strings($variables) {
     );
   }
   $table = array(
-    '#theme' => 'table',
+    '#type' => 'table',
     '#header' => $header,
     '#rows' => $rows,
     '#empty' => t('No strings available.'),

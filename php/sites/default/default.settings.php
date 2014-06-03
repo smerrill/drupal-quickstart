@@ -49,6 +49,11 @@
  *
  * @see example.sites.php
  * @see conf_path()
+ *
+ * In addition to customizing application settings through variables in
+ * settings.php, you can create a services.yml file in the same directory to
+ * register custom, site-specific service definitions and/or swap out default
+ * implementations with custom ones.
  */
 
 /**
@@ -214,25 +219,6 @@
 $databases = array();
 
 /**
- * Salt for one-time login links and cancel links, form tokens, etc.
- *
- * This variable will be set to a random value by the installer. All one-time
- * login links will be invalidated if the value is changed. Note that if your
- * site is deployed on a cluster of web servers, you must ensure that this
- * variable has the same value on each server. If this variable is empty, a hash
- * of the serialized database credentials will be used as a fallback salt.
- *
- * For enhanced security, you may set this variable to a value using the
- * contents of a file outside your docroot that is never saved together
- * with any backups of your Drupal files and database.
- *
- * Example:
- *   $drupal_hash_salt = file_get_contents('/home/example/salt.txt');
- *
- */
-$drupal_hash_salt = '';
-
-/**
  * Location of the site configuration files.
  *
  * By default, Drupal configuration files are stored in a randomly named
@@ -263,6 +249,25 @@ $config_directories = array();
  */
 
 /**
+ * Salt for one-time login links, cancel links, form tokens, etc.
+ *
+ * This variable will be set to a random value by the installer. All one-time
+ * login links will be invalidated if the value is changed. Note that if your
+ * site is deployed on a cluster of web servers, you must ensure that this
+ * variable has the same value on each server.
+ *
+ * For enhanced security, you may set this variable to a value using the
+ * contents of a file outside your docroot that is never saved together
+ * with any backups of your Drupal files and database.
+ *
+ * Example:
+ * @code
+ *   $settings['hash_salt'] = file_get_contents('/home/example/salt.txt');
+ * @endcode
+ */
+$settings['hash_salt'] = '';
+
+/**
  * Access control for update.php script.
  *
  * If you are updating your Drupal installation using the update.php script but
@@ -274,50 +279,6 @@ $config_directories = array();
  * TRUE back to a FALSE!
  */
 $settings['update_free_access'] = FALSE;
-
-/**
- * Twig debugging:
- *
- * When debugging is enabled:
- * - The markup of each Twig template is surrounded by HTML comments that
- *   contain theming information, such as template file name suggestions.
- * - Note that this debugging markup will cause automated tests that directly
- *   check rendered HTML to fail. When running automated tests, 'twig_debug'
- *   should be set to FALSE.
- * - The dump() function can be used in Twig templates to output information
- *   about template variables.
- * - Twig templates are automatically recompiled whenever the source code
- *   changes (see twig_auto_reload below).
- *
- * For more information about debugging Twig templates, see
- * http://drupal.org/node/1906392.
- *
- * Not recommended in production environments (Default: FALSE).
- */
-# $settings['twig_debug'] = TRUE;
-
-/**
- * Twig auto-reload:
- *
- * Automatically recompile Twig templates whenever the source code changes. If
- * you don't provide a value for twig_auto_reload, it will be determined based
- * on the value of twig_debug.
- *
- * Not recommended in production environments (Default: NULL).
- */
-# $settings['twig_auto_reload'] = TRUE;
-
-/**
- * Twig cache:
- *
- * By default, Twig templates will be compiled and stored in the filesystem to
- * increase performance. Disabling the Twig cache will recompile the templates
- * from source each time they are used. In most cases the twig_auto_reload
- * setting above should be enabled rather than disabling the Twig cache.
- *
- * Not recommended in production environments (Default: TRUE).
- */
-# $settings['twig_cache'] = FALSE;
 
 /**
  * External access proxy settings:
@@ -482,7 +443,7 @@ $settings['update_free_access'] = FALSE;
  * Remove the leading hash signs to enable.
  *
  * The "en" part of the variable name, is dynamic and can be any langcode of
- * any enabled language. (eg locale_custom_strings_de for german).
+ * any added language. (eg locale_custom_strings_de for german).
  */
 # $settings['locale_custom_strings_en'][''] = array(
 #   'forum'      => 'Discussion board',
@@ -500,16 +461,6 @@ $settings['update_free_access'] = FALSE;
  * Note: This setting does not apply to installation and update pages.
  */
 # $settings['maintenance_theme'] = 'bartik';
-
-/**
- * Enable access to rebuild.php.
- *
- * This setting can be enabled to allow Drupal's php and database cached
- * storage to be cleared via the rebuild.php page. Access to this page can also
- * be gained by generating a query string from rebuild_token_calculator.sh and
- * using these parameters in a request to rebuild.php.
- */
-# $settings['rebuild_access'] = TRUE;
 
 /**
  * Base URL (optional).
@@ -590,6 +541,19 @@ ini_set('session.cookie_lifetime', 2000000);
  * with a leading dot, as per RFC 2109.
  */
 # $cookie_domain = '.example.com';
+
+/**
+ * Active configuration settings.
+ *
+ * By default, the active configuration is stored in the database in the
+ * {config} table. To install Drupal with a different active configuration
+ * storage, you need to override the setting here, in addition to overriding
+ * the config.storage.active service definition in a module or profile.
+ *
+ * The 'bootstrap_config_storage' setting needs to be a callable that returns
+ * core.services.yml.
+ */
+# $settings['bootstrap_config_storage'] = array('Drupal\Core\Config\BootstrapConfigStorageFactory', 'getFileStorage');
 
 /**
  * Configuration overrides.

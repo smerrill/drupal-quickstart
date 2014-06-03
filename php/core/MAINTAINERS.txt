@@ -34,7 +34,6 @@ Authentication and authorization system
 - ?
 
 Base system
-- Károly Négyesi 'chx' http://drupal.org/user/9446
 - Damien Tournoud 'DamZ' http://drupal.org/user/22211
 - Moshe Weitzman 'moshe weitzman' http://drupal.org/user/23
 - Kat Bailey 'katbailey' http://drupal.org/user/172987
@@ -51,19 +50,16 @@ Cache system
 - Mark Sonnabaum 'msonnabaum' http://drupal.org/user/75278
 
 Configuration system
-- Greg Dunlap 'heyrocker' http://drupal.org/user/128537
 - Daniel F. Kudwien 'sun' http://drupal.org/user/54136
 - Alex Pott 'alexpott' http://drupal.org/user/157725
 - Matthew Tift 'mtift' https://drupal.org/user/751908
-- Justin Randell 'beejeebus' https://drupal.org/user/38580
 
 Configuration entity system
+- Alex Pott 'alexpott' http://drupal.org/user/157725
 - Daniel F. Kudwien 'sun' http://drupal.org/user/54136
 - Tim Plunkett 'tim.plunkett' http://drupal.org/user/241634
-- Justin Randell 'beejeebus' https://drupal.org/user/38580
 
 Cron system
-- Károly Négyesi 'chx' http://drupal.org/user/9446
 - Derek Wright 'dww' http://drupal.org/user/46549
 
 CSS
@@ -82,7 +78,6 @@ Database system
 
   Sqlite DB driver
   - Damien Tournoud 'DamZ' http://drupal.org/user/22211
-  - Károly Négyesi 'chx' http://drupal.org/user/9446
 
 Database update system
 - ?
@@ -96,12 +91,16 @@ Entity system
 Extension system
 - ?
 
+Field system
+- Yves Chedemois 'yched' http://drupal.org/user/39567
+- Kristof De Jaeger 'swentel' http://drupal.org/user/107403
+- Andrei Mateescu 'amateescu' http://drupal.org/user/729614
+
 File system
 - Andrew Morton 'drewish' http://drupal.org/user/34869
 - Aaron Winborn 'aaron' http://drupal.org/user/33420
 
 Form system
-- Károly Négyesi 'chx' http://drupal.org/user/9446
 - Alex Bronstein 'effulgentsia' http://drupal.org/user/78040
 - Wolfgang Ziegler 'fago' http://drupal.org/user/16747
 - Daniel F. Kudwien 'sun' http://drupal.org/user/54136
@@ -132,11 +131,11 @@ Markup
 - Daniel F. Kudwien 'sun' http://drupal.org/user/54136
 
 Migrate
-- Károly Négyesi 'chx' http://drupal.org/user/9446
+- Ben Dougherty 'benjy' https://drupal.org/user/1852732
+- Claudiu Cristea "claudiu.cristea"  https://drupal.org/user/56348
 - Mike Ryan 'mikeryan' http://drupal.org/user/4420
 
 Menu system
-- Károly Négyesi 'chx' http://drupal.org/user/9446
 
 Path system
 - Nathaniel Catchpole 'catch' http://drupal.org/user/35733
@@ -144,10 +143,10 @@ Path system
 Plugin system
 - Kris Vanderwater 'EclipseGc' http://drupal.org/user/61203
 - Alex Bronstein 'effulgentsia' http://drupal.org/user/78040
+- Tim Plunkett 'tim.plunkett' http://drupal.org/user/241634
 
 Queue system
 - James Gilliland 'neclimdul' http://drupal.org/user/48673
-- Károly Négyesi 'chx' http://drupal.org/user/9446
 - Mark Sonnabaum 'msonnabaum' http://drupal.org/user/75278
 
 Render system
@@ -167,7 +166,6 @@ Theme system
 - Mark Carver 'Mark Carver' http://drupal.org/user/501638
 - Jen Lampton 'jenlampton' http://drupal.org/user/85586
 - Scott Reeves 'Cottser' http://drupal.org/user/1167326
-- Carl Wiedemann 'c4rl' http://drupal.org/user/235047
 - Steve Oliver 'steveoliver' http://drupal.org/user/42327
 - Fabian Franz 'Fabianx' http://drupal.org/user/693738
 - Joël Pittet 'joelpittet' https://drupal.org/user/160302
@@ -186,14 +184,11 @@ Topic coordinators
 ------------------
 
 Accessibility
-- Brandon Bowersox-Johnson 'bowersox' http://drupal.org/user/186415
 - Mike Gifford 'mgifford' http://drupal.org/user/27930
+- Jesse Renée Beach 'jessebeach' http://drupal.org/user/748566
 
 Documentation
 - Jennifer Hodgdon 'jhodgdon' http://drupal.org/user/155601
-
-Security
-- Greg Knaddison 'greggles' http://drupal.org/user/36762
 
 Translations
 - ?
@@ -208,6 +203,19 @@ Node Access
 - Jess Myrbo 'xjm' http://drupal.org/user/65776
 
 
+Security team
+-----------------
+
+To report a security issue, see: https://drupal.org/security-team/report-issue
+
+The Drupal security team provides Security Advisories for vulnerabilities,
+assists developers in resolving security issues, and provides security
+documentation. See http://drupal.org/security-team for more information. The
+security team lead is:
+
+- Michael Hess 'mlhess' https://drupal.org/user/102818
+
+
 Module maintainers
 ------------------
 
@@ -215,7 +223,7 @@ Action module
 - ?
 
 Aggregator module
-- Paris Liakos 'rootatwc' http://drupal.org/user/1011436
+- Paris Liakos 'ParisLiakos' http://drupal.org/user/1011436
 
 Ban module
 - ?
@@ -274,10 +282,6 @@ DateTime module
 E-mail module
 - Nils Destoop 'zuuperman' https://drupal.org/user/361625
 
-Edit module
-- Wim Leers 'Wim Leers' http://drupal.org/user/99777
-- Théodore Biadala 'nod_' http://drupal.org/user/598310
-
 Editor module
 - Wim Leers 'Wim Leers' http://drupal.org/user/99777
 
@@ -286,11 +290,6 @@ Entity module
 
 Entity Reference module
 - Amitai Burstein 'Amitaibu' http://drupal.org/user/57511
-- Andrei Mateescu 'amateescu' http://drupal.org/user/729614
-
-Field module
-- Yves Chedemois 'yched' http://drupal.org/user/39567
-- Kristof De Jaeger 'swentel' http://drupal.org/user/107403
 - Andrei Mateescu 'amateescu' http://drupal.org/user/729614
 
 Field UI module
@@ -311,7 +310,7 @@ History module
 - Andrey Postnikov 'andypost' http://drupal.org/user/118908
 
 Hypertext Application Language (HAL) module
-- Lin Clark 'linclark' http://drupal.org/user/396253
+- ?
 
 Help module
 - ?
@@ -329,12 +328,11 @@ Language module
 Link module
 - ?
 
-Menu module
+Menu UI module
 - ?
 
 Menu Link module
 - Andrei Mateescu 'amateescu' http://drupal.org/user/729614
-- Károly Négyesi 'chx' http://drupal.org/user/9446
 - Peter Wolanin 'pwolanin' http://drupal.org/user/49851
 
 Migrate module
@@ -359,8 +357,9 @@ Path module
 Phone module
 - Dave Reid 'davereid' http://drupal.org/user/53892
 
-Picture module
-- Peter Droogmans 'attiks' http://drupal.org/user/105002
+Quick Edit module
+- Wim Leers 'Wim Leers' http://drupal.org/user/99777
+- Théodore Biadala 'nod_' http://drupal.org/user/598310
 
 RDF module
 - Stéphane Corlosquet 'scor' http://drupal.org/user/52142
@@ -369,20 +368,23 @@ REST module
 - Klaus Purer 'klausi' http://drupal.org/user/262198
 - Larry Garfield 'Crell' http://drupal.org/user/26398
 
+Responsive Image module
+- Peter Droogmans 'attiks' http://drupal.org/user/105002
+
 Search module
 - Jennifer Hodgdon 'jhodgdon' https://drupal.org/user/155601
 - Peter Wolanin 'pwolanin' https://drupal.org/user/49851
 
 Serialization module
-- Lin Clark 'linclark' http://drupal.org/user/396253
 - Damian Lee 'damiankloip' http://drupal.org/user/1037976
 
 Shortcut module
 - ?
 
 Simpletest module
-- Jimmy Berry 'boombatower' http://drupal.org/user/214218
-- Károly Négyesi 'chx' http://drupal.org/user/9446
+- Daniel F. Kudwien 'sun' http://drupal.org/user/54136
+- Sascha Grossenbacher 'Berdir' http://drupal.org/user/214652
+- Alex Pott 'alexpott' http://drupal.org/user/157725
 
 Statistics module
 - Tim Millwood 'timmillwood' http://drupal.org/user/227849
@@ -402,7 +404,8 @@ Text module
 - ?
 
 Toolbar module
-- ?
+- Jesse Renée Beach 'jessebeach' http://drupal.org/user/748566
+- Théodore Biadala 'nod_' http://drupal.org/user/598310
 
 Tour module
 - Nick Schuch 'nick_schuch' http://drupal.org/user/1412036
@@ -468,3 +471,15 @@ Multi-lingual
 
 Web services
 - Larry Garfield 'Crell' http://drupal.org/user/26398
+
+Core mentoring leads
+---------------------
+
+The Drupal Core mentoring leads inspire, enable, and encourage new core
+contributors. They also work on the core tools, process, and community to make
+it easier for new contributors to get involved. The mentoring leads are:
+
+- Jess Myrbo 'xjm' http://drupal.org/user/65776
+- Cathy Theys 'YesCT' https://drupal.org/user/258568
+- Scott Reeves 'Cottser' http://drupal.org/user/1167326
+- Andrea Soper 'ZenDoodles' https://drupal.org/user/226976

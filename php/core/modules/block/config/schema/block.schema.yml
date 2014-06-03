@@ -1,15 +1,9 @@
 # Schema for the configuration files of the Block module.
 
 block.block.*:
-  type: mapping
+  type: config_entity
   label: 'Block'
   mapping:
-    id:
-      type: string
-      label: 'ID'
-    uuid:
-      type: string
-      label: 'UUID'
     theme:
       type: string
       label: 'Theme'
@@ -19,12 +13,9 @@ block.block.*:
     weight:
       type: integer
       label: 'Weight'
-    module:
+    provider:
       type: string
-      label: 'Module'
-    status:
-      type: boolean
-      label: 'Status'
+      label: 'Provider'
     visibility:
       type: mapping
       label: 'Visibility settings'
@@ -73,8 +64,18 @@ block.block.*:
           type: string
           label: 'Display title'
         cache:
-          type: integer
-          label: 'Cache'
+          type: mapping
+          label: 'Cache settings'
+          mapping:
+            max_age:
+              type: integer
+              label: 'Maximum age'
+            contexts:
+              type: sequence
+              label: 'Vary by context'
+              sequence:
+                - type: string
+                  label: 'Context'
         status:
           type: boolean
           label: 'Status'
@@ -84,9 +85,6 @@ block.block.*:
         view_mode:
           type: string
           label: 'View mode'
-        module:
+        provider:
           type: string
-          label: 'Module'
-    langcode:
-      type: string
-      label: 'Default language'
+          label: 'Provider'

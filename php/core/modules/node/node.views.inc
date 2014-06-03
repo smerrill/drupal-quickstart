@@ -517,6 +517,10 @@ function node_views_data() {
       'left_field' => 'vid',
       'field' => 'vid',
     ),
+    'node_revision' => array(
+      'left_field' => 'vid',
+      'field' => 'vid',
+    ),
   );
 
   $data['node_field_revision']['status'] = array(
@@ -618,6 +622,83 @@ function node_views_data() {
       'help' => t('Filter for content by view access. <strong>Not necessary if you are using node as your base table.</strong>'),
     ),
   );
+
+  // Add search table, fields, filters, etc., but only if a page using the
+  // node_search plugin is enabled.
+  if (\Drupal::moduleHandler()->moduleExists('search')) {
+    $enabled = FALSE;
+    $search_page_repository = \Drupal::service('search.search_page_repository');
+    foreach ($search_page_repository->getActiveSearchpages() as $page) {
+      if ($page->getPlugin()->getPluginId() == 'node_search') {
+        $enabled = TRUE;
+        break;
+      }
+    }
+
+    if ($enabled) {
+      $data['node_search_index']['table']['group'] = t('Search');
+
+      // Automatically join to the node table (or actually, node_field_data).
+      // Use a Views table alias to allow other modules to use this table too,
+      // if they use the search index.
+      $data['node_search_index']['table']['join'] = array(
+        'node' => array(
+          'left_field' => 'nid',
+          'field' => 'sid',
+          'table' => 'search_index',
+          'left_table' => 'node_field_data',
+          'extra' => "node_search_index.type = 'node_search' AND node_search_index.langcode = node_field_data.langcode",
+        )
+      );
+
+      $data['node_search_total']['table']['join'] = array(
+        'node_search_index' => array(
+          'left_field' => 'word',
+          'field' => 'word',
+        ),
+      );
+
+      $data['node_search_dataset']['table']['join'] = array(
+        'node_search_index' => array(
+          'left_field' => 'sid',
+          'field' => 'sid',
+          'table' => 'search_dataset',
+          'extra' => 'node_search_index.type = node_search_dataset.type AND node_search_index.langcode = node_search_dataset.langcode',
+          'type' => 'INNER',
+        ),
+      );
+
+      $data['node_search_index']['score'] = array(
+        'title' => t('Score'),
+        'help' => t('The score of the search item. This will not be used if the search filter is not also present.'),
+        'field' => array(
+          'id' => 'search_score',
+          'float' => TRUE,
+          'no group by' => TRUE,
+        ),
+        'sort' => array(
+          'id' => 'search_score',
+          'no group by' => TRUE,
+        ),
+      );
+
+      $data['node_search_index']['keys'] = array(
+        'title' => t('Search Keywords'),
+        'help' => t('The keywords to search for.'),
+        'filter' => array(
+          'id' => 'search_keywords',
+          'no group by' => TRUE,
+          'search_type' => 'node_search',
+        ),
+        'argument' => array(
+          'id' => 'search',
+          'no group by' => TRUE,
+          'search_type' => 'node_search',
+        ),
+      );
+
+    }
+  }
 
   return $data;
 }

@@ -5,6 +5,8 @@
  * Functions for error handling.
  */
 
+use Drupal\Component\Utility\Xss;
+use Drupal\Core\Page\DefaultHtmlPageRenderer;
 use Drupal\Core\Utility\Error;
 use Drupal\Component\Utility\String;
 use Symfony\Component\HttpFoundation\Response;
@@ -61,16 +63,12 @@ function _drupal_error_handler_real($error_level, $message, $filename, $line, $c
     $backtrace = debug_backtrace();
     $caller = Error::getLastCaller($backtrace);
 
-    if (!function_exists('filter_xss_admin')) {
-      require_once __DIR__ . '/common.inc';
-    }
-
     // We treat recoverable errors as fatal.
     _drupal_log_error(array(
       '%type' => isset($types[$error_level]) ? $severity_msg : 'Unknown error',
       // The standard PHP error handler considers that the error messages
       // are HTML. We mimick this behavior here.
-      '!message' => filter_xss_admin($message),
+      '!message' => Xss::filterAdmin($message),
       '%function' => $caller['function'],
       '%file' => $caller['file'],
       '%line' => $caller['line'],
@@ -141,8 +139,7 @@ function _drupal_log_error($error, $fatal = FALSE) {
 
   // When running inside the testing framework, we relay the errors
   // to the tested site by the way of HTTP headers.
-  $test_info = &$GLOBALS['drupal_test_info'];
-  if (!empty($test_info['in_child_site']) && !headers_sent() && (!defined('SIMPLETEST_COLLECT_ERRORS') || SIMPLETEST_COLLECT_ERRORS)) {
+  if (DRUPAL_TEST_IN_CHILD_SITE && !headers_sent() && (!defined('SIMPLETEST_COLLECT_ERRORS') || SIMPLETEST_COLLECT_ERRORS)) {
     // $number does not use drupal_static as it should not be reset
     // as it uniquely identifies each PHP error.
     static $number = 0;
@@ -170,7 +167,7 @@ function _drupal_log_error($error, $fatal = FALSE) {
     }
   }
 
-  if (\Drupal::request()->isXmlHttpRequest()) {
+  if (\Drupal::hasRequest() && \Drupal::request()->isXmlHttpRequest()) {
     if ($fatal) {
       if (error_displayable($error)) {
         // When called from JavaScript, simply output the error message.
@@ -219,22 +216,20 @@ function _drupal_log_error($error, $fatal = FALSE) {
     }
 
     if ($fatal) {
-      // Should not translate the string to avoid errors producing more errors.
-      drupal_set_title('Error');
       // We fallback to a maintenance page at this point, because the page generation
       // itself can generate errors.
       // Should not translate the string to avoid errors producing more errors.
       $message = 'The website has encountered an error. Please try again later.';
       if ($is_installer) {
         // install_display_output() prints the output and ends script execution.
-        install_display_output($message, $GLOBALS['install_state']);
+        $output = array(
+          '#title' => 'Error',
+          '#markup' => $message,
+        );
+        install_display_output($output, $GLOBALS['install_state']);
       }
       else {
-        $output = array(
-          '#theme' => 'maintenance_page',
-          '#content' => $message,
-        );
-        $output = drupal_render($output);
+        $output = DefaultHtmlPageRenderer::renderPage($message, 'Error');
       }
 
       $response = new Response($output, 500);
@@ -290,7 +285,8 @@ function _drupal_get_error_level() {
  * @return string
  *   A plain-text line-wrapped string ready to be put inside <pre>.
  *
- * @deprecated Use \Drupal\Core\Utility\Error::formatBacktrace() instead.
+ * @deprecated in Drupal 8.x-dev, will be removed before Drupal 8.0.
+ *   Use \Drupal\Core\Utility\Error::formatBacktrace().
  */
 function format_backtrace(array $backtrace) {
   return Error::formatBacktrace($backtrace);

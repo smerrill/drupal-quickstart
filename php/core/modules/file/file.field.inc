@@ -5,17 +5,9 @@
  * Field module functionality for the File module.
  */
 
-use Drupal\field\FieldInterface;
-
-/**
- * Implements hook_field_info_alter().
- *
- * Cannot annotate in FieldItem plugin the settings.uri_scheme meta data key
- * with a dynamic value. We need to alter the value here.
- */
-function file_field_info_alter(&$info) {
-  $info['file']['settings']['uri_scheme'] = file_default_scheme();
-}
+use Drupal\Component\Utility\Html;
+use Drupal\Core\Field\FieldDefinitionInterface;
+use Drupal\Core\Render\Element;
 
 /**
  * Returns HTML for an individual file upload widget.
@@ -74,7 +66,7 @@ function theme_file_widget_multiple($variables) {
   // Get our list of widgets in order (needed when the form comes back after
   // preview or failed validation).
   $widgets = array();
-  foreach (element_children($element) as $key) {
+  foreach (Element::children($element) as $key) {
     $widgets[] = &$element[$key];
   }
   usort($widgets, '_field_sort_items_value_helper');
@@ -91,7 +83,7 @@ function theme_file_widget_multiple($variables) {
     // Delay rendering of the buttons, so that they can be rendered later in the
     // "operations" column.
     $operations_elements = array();
-    foreach (element_children($widget) as $sub_key) {
+    foreach (Element::children($widget) as $sub_key) {
       if (isset($widget[$sub_key]['#type']) && $widget[$sub_key]['#type'] == 'submit') {
         hide($widget[$sub_key]);
         $operations_elements[] = &$widget[$sub_key];
@@ -181,8 +173,8 @@ function theme_file_upload_help($variables) {
 
   $descriptions = array();
 
-  if (strlen($description)) {
-    $descriptions[] = _filter_htmlcorrector($description);
+  if (!empty($description)) {
+    $descriptions[] = Html::normalize($description);
   }
   if (isset($cardinality)) {
     if ($cardinality == -1) {
@@ -222,14 +214,14 @@ function theme_file_upload_help($variables) {
 /**
  * Determine whether a field references files stored in {file_managed}.
  *
- * @param Drupal\field\FieldInterface $field
+ * @param \Drupal\Core\Field\FieldDefinitionInterface $field
  *   A field definition.
  *
- * @return
+ * @return bool
  *   The field column if the field references {file_managed}.fid, typically
- *   fid, FALSE if it doesn't.
+ *   fid, FALSE if it does not.
  */
-function file_field_find_file_reference_column(FieldInterface $field) {
+function file_field_find_file_reference_column(FieldDefinitionInterface $field) {
   $schema = $field->getSchema();
   foreach ($schema['foreign keys'] as $data) {
     if ($data['table'] == 'file_managed') {
@@ -270,7 +262,7 @@ function theme_file_formatter_table($variables) {
   }
 
   $build = array(
-    '#theme' => 'table',
+    '#type' => 'table',
     '#header' => $header,
     '#rows' => $rows,
   );

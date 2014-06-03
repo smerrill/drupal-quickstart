@@ -8,6 +8,8 @@
 namespace Drupal\Core\Plugin;
 
 use Drupal\Component\Plugin\Discovery\CachedDiscoveryInterface;
+use Drupal\Component\Plugin\Discovery\DiscoveryCachedTrait;
+use Drupal\Component\Plugin\Exception\PluginNotFoundException;
 use Drupal\Core\Plugin\Discovery\ContainerDerivativeDiscoveryDecorator;
 use Drupal\Component\Plugin\PluginManagerBase;
 use Drupal\Component\Plugin\PluginManagerInterface;
@@ -25,12 +27,7 @@ use Drupal\Core\Plugin\Factory\ContainerFactory;
  */
 class DefaultPluginManager extends PluginManagerBase implements PluginManagerInterface, CachedDiscoveryInterface {
 
-  /**
-   * Cached definitions array.
-   *
-   * @var array
-   */
-  protected $definitions;
+  use DiscoveryCachedTrait;
 
   /**
    * Cache backend instance.
@@ -106,15 +103,18 @@ class DefaultPluginManager extends PluginManagerBase implements PluginManagerInt
    * @param \Traversable $namespaces
    *   An object that implements \Traversable which contains the root paths
    *   keyed by the corresponding namespace to look for plugin implementations.
+   * @param \Drupal\Core\Extension\ModuleHandlerInterface $module_handler
+   *   The module handler.
    * @param string $plugin_definition_annotation_name
    *   (optional) The name of the annotation that contains the plugin definition.
    *   Defaults to 'Drupal\Component\Annotation\Plugin'.
    */
-  public function __construct($subdir, \Traversable $namespaces, $plugin_definition_annotation_name = 'Drupal\Component\Annotation\Plugin') {
+  public function __construct($subdir, \Traversable $namespaces, ModuleHandlerInterface $module_handler, $plugin_definition_annotation_name = 'Drupal\Component\Annotation\Plugin') {
     $this->subdir = $subdir;
     $this->discovery = new AnnotatedClassDiscovery($subdir, $namespaces, $plugin_definition_annotation_name);
     $this->discovery = new ContainerDerivativeDiscoveryDecorator($this->discovery);
     $this->factory = new ContainerFactory($this);
+    $this->moduleHandler = $module_handler;
   }
 
   /**
@@ -150,29 +150,12 @@ class DefaultPluginManager extends PluginManagerBase implements PluginManagerInt
   /**
    * Initializes the alter hook.
    *
-   * @param \Drupal\Core\Extension\ModuleHandlerInterface $module_handler
-   *   The module handler to invoke the alter hook with.
    * @param string $alter_hook
-   *   Name of the alter hook.
+   *   Name of the alter hook; for example, to invoke
+   *   hook_mymodule_data_alter() pass in "mymodule_data".
    */
-  protected function alterInfo(ModuleHandlerInterface $module_handler, $alter_hook) {
-    $this->moduleHandler = $module_handler;
+  protected function alterInfo($alter_hook) {
     $this->alterHook = $alter_hook;
-  }
-
-  /**
-   * {@inheritdoc}
-   */
-  public function getDefinition($plugin_id) {
-    // Fetch definitions if they're not loaded yet.
-    if (!isset($this->definitions)) {
-      $this->getDefinitions();
-    }
-    // Avoid using a ternary that would create a copy of the array.
-    if (isset($this->definitions[$plugin_id])) {
-      return $this->definitions[$plugin_id];
-    }
-    return array();
   }
 
   /**
@@ -266,6 +249,18 @@ class DefaultPluginManager extends PluginManagerBase implements PluginManagerInt
     }
     if ($this->alterHook) {
       $this->moduleHandler->alter($this->alterHook, $definitions);
+    }
+    // If this plugin was provided by a module that does not exist, remove the
+    // plugin definition.
+    foreach ($definitions as $plugin_id => $plugin_definition) {
+      // If the plugin definition is an object, attempt to convert it to an
+      // array, if that is not possible, skip further processing.
+      if (is_object($plugin_definition) && !($plugin_definition = (array) $plugin_definition)) {
+        continue;
+      }
+      if (isset($plugin_definition['provider']) && !in_array($plugin_definition['provider'], array('Core', 'Component')) && !$this->moduleHandler->moduleExists($plugin_definition['provider'])) {
+        unset($definitions[$plugin_id]);
+      }
     }
     return $definitions;
   }

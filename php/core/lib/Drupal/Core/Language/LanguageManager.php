@@ -8,12 +8,13 @@
 namespace Drupal\Core\Language;
 
 use Drupal\Component\Utility\String;
+use Drupal\Core\DependencyInjection\DependencySerialization;
 use Drupal\Core\StringTranslation\TranslationInterface;
 
 /**
  * Class responsible for providing language support on language-unaware sites.
  */
-class LanguageManager implements LanguageManagerInterface {
+class LanguageManager extends DependencySerialization implements LanguageManagerInterface {
 
   /**
    * The string translation service.
@@ -49,7 +50,7 @@ class LanguageManager implements LanguageManagerInterface {
   /**
    * {@inheritdoc}
    */
-  function setTranslation(TranslationInterface $translation) {
+  public function setTranslation(TranslationInterface $translation) {
     $this->translation = $translation;
   }
 
@@ -149,7 +150,7 @@ class LanguageManager implements LanguageManagerInterface {
   /**
    * {@inheritdoc}
    */
-  function getLanguageName($langcode) {
+  public function getLanguageName($langcode) {
     if ($langcode == Language::LANGCODE_NOT_SPECIFIED) {
       return $this->t('None');
     }
@@ -171,7 +172,7 @@ class LanguageManager implements LanguageManagerInterface {
     $locked_language = array(
       'default' => FALSE,
       'locked' => TRUE,
-     );
+    );
     $languages[Language::LANGCODE_NOT_SPECIFIED] = new Language(array(
       'id' => Language::LANGCODE_NOT_SPECIFIED,
       'name' => $this->t('Not specified'),
@@ -213,9 +214,10 @@ class LanguageManager implements LanguageManagerInterface {
    * Some common languages with their English and native names.
    *
    * Language codes are defined by the W3C language tags document for
-   * interoperability. Language codes typically have a language and optionally,
-   * a script or regional variant name. See
-   * http://www.w3.org/International/articles/language-tags/ for more information.
+   * interoperability. Language codes typically have a language and, optionally,
+   * a script or regional variant name. See:
+   * http://www.w3.org/International/articles/language-tags/ for more
+   * information.
    *
    * This list is based on languages available from localize.drupal.org. See
    * http://localize.drupal.org/issues for information on how to add languages
@@ -326,6 +328,26 @@ class LanguageManager implements LanguageManagerInterface {
       'zh-hans' => array('Chinese, Simplified', '简体中文'),
       'zh-hant' => array('Chinese, Traditional', '繁體中文'),
     );
+  }
+
+  /**
+   * {@inheritdoc}
+   *
+   * This function is a noop since the configuration cannot be overridden by
+   * language unless the Language module is enabled. That replaces the default
+   * language manager with a configurable language manager.
+   *
+   * @see \Drupal\language\ConfigurableLanguageManager::setConfigOverrideLanguage()
+   */
+  public function setConfigOverrideLanguage(Language $language = NULL) {
+    return $this;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getConfigOverrideLanguage() {
+    return $this->getCurrentLanguage();
   }
 
 }

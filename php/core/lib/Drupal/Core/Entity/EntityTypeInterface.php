@@ -10,12 +10,22 @@ namespace Drupal\Core\Entity;
 /**
  * Provides an interface for an entity type and its metadata.
  *
- * Additional information can be provided by modules: hook_entity_info() can be
- * implemented to define new properties, while hook_entity_info_alter() can be
+ * Additional information can be provided by modules: hook_entity_type_build() can be
+ * implemented to define new properties, while hook_entity_type_alter() can be
  * implemented to alter existing data and fill-in defaults. Module-specific
  * properties should be documented in the hook implementations defining them.
  */
 interface EntityTypeInterface {
+
+  /**
+   * The maximum length of ID, in characters.
+   */
+  const ID_MAX_LENGTH = 32;
+
+  /**
+   * The maximum length of bundle name, in characters.
+   */
+  const BUNDLE_MAX_LENGTH = 32;
 
   /**
    * Gets any arbitrary property.
@@ -75,8 +85,8 @@ interface EntityTypeInterface {
    *     property and its value must be numeric.
    *   - revision: (optional) The name of the property that contains the
    *     revision ID of the entity. The Field API assumes that all revision IDs
-   *     are unique across all entities of a type. This entry can be omitted if
-   *     the entities of this type are not versionable.
+   *     are unique across all entities of a type. If this entry is omitted
+   *     the entities of this type are not revisionable.
    *   - bundle: (optional) The name of the property that contains the bundle
    *     name for the entity. The bundle name defines which set of fields are
    *     attached to the entity (e.g. what nodes call "content type"). This
@@ -136,7 +146,7 @@ interface EntityTypeInterface {
   /**
    * Indicates if the persistent cache of field data should be used.
    *
-   * @todo Used by FieldableEntityStorageControllerBase only.
+   * @todo Used by ContentEntityStorageBase only.
    *
    * The persistent cache should usually only be disabled if a higher level
    * persistent cache is available for the entity type.
@@ -185,16 +195,16 @@ interface EntityTypeInterface {
    *   types (listed below) and the values are the names of the classes that
    *   implement that controller:
    *   - storage: The name of the class used to load the objects. The class must
-   *     implement \Drupal\Core\Entity\EntityStorageControllerInterface.
+   *     implement \Drupal\Core\Entity\EntityStorageInterface.
    *   - form: An associative array where the keys are the names of the
    *     different form operations (such as 'create', 'edit', or 'delete') and
    *     the values are the names of the controller classes for those
    *     operations. The name of the operation is passed also to the form
    *     controller's constructor, so that one class can be used for multiple
    *     entity forms when the forms are similar. The classes must implement
-   *     \Drupal\Core\Entity\EntityFormControllerInterface.
+   *     \Drupal\Core\Entity\EntityFormInterface.
    *   - list: The name of the class that provides listings of the entities. The
-   *     class must implement \Drupal\Core\Entity\EntityListControllerInterface.
+   *     class must implement \Drupal\Core\Entity\EntityListBuilderInterface.
    *   - render: The name of the class that is used to render the entities. The
    *     class must implement \Drupal\Core\Entity\EntityViewBuilderInterface.
    *   - access: The name of the class that is used for access checks. The class
@@ -229,6 +239,8 @@ interface EntityTypeInterface {
    *
    * @return string
    *   The class for this operation's form for this entity type.
+   *
+   * @see \Drupal\Core\Entity\EntityFormBuilderInterface
    */
   public function getFormClass($operation);
 
@@ -238,9 +250,12 @@ interface EntityTypeInterface {
    * @param string $operation
    *   The operation to use this form class for.
    * @param string $class
-   *   The form class to use for the operation.
+   *   The form class implementing
+   *   \Drupal\Core\Entity\EntityFormInterface.
    *
    * @return static
+   *
+   * @see \Drupal\Core\Entity\EntityFormBuilderInterface
    */
   public function setFormClass($operation, $class);
 
@@ -258,7 +273,7 @@ interface EntityTypeInterface {
    * @return string
    *   The class for this entity type's list.
    */
-  public function getListClass();
+  public function getListBuilderClass();
 
   /**
    * Sets the list class.
@@ -268,7 +283,7 @@ interface EntityTypeInterface {
    *
    * @return static
    */
-  public function setListClass($class);
+  public function setListBuilderClass($class);
 
   /**
    * Indicates if this entity type has a list class.
@@ -276,7 +291,7 @@ interface EntityTypeInterface {
    * @return bool
    *   TRUE if there is a list for this entity type, FALSE otherwise.
    */
-  public function hasListClass();
+  public function hasListBuilderClass();
 
   /**
    * Returns the view builder class.
@@ -509,7 +524,7 @@ interface EntityTypeInterface {
   /**
    * Returns the name of the entity's base table.
    *
-   * @todo Used by DatabaseStorageController only.
+   * @todo Used by ContentEntityDatabaseStorage only.
    *
    * @return string|bool
    *   The name of the entity's base table, or FALSE if none exists.
@@ -527,6 +542,13 @@ interface EntityTypeInterface {
   public function isTranslatable();
 
   /**
+   * Indicates whether entities of this type have revision support.
+   *
+   * @return bool
+   */
+  public function isRevisionable();
+
+  /**
    * Returns the config prefix used by the configuration entity type.
    *
    * @todo Used for configuration entities only.
@@ -539,7 +561,7 @@ interface EntityTypeInterface {
   /**
    * Returns the name of the entity's revision data table.
    *
-   * @todo Used by FieldableDatabaseStorageController only.
+   * @todo Used by ContentEntityDatabaseStorage only.
    *
    * @return string|bool
    *   The name of the entity type's revision data table.
@@ -549,7 +571,7 @@ interface EntityTypeInterface {
   /**
    * Returns the name of the entity's revision table.
    *
-   * @todo Used by FieldableDatabaseStorageController only.
+   * @todo Used by ContentEntityDatabaseStorage only.
    *
    * @return string|bool
    *   The name of the entity type's revision table.
@@ -559,7 +581,7 @@ interface EntityTypeInterface {
   /**
    * Returns the name of the entity's data table.
    *
-   * @todo Used by FieldableDatabaseStorageController only.
+   * @todo Used by ContentEntityDatabaseStorage only.
    *
    * @return string|bool
    *   The name of the entity type's data table.

@@ -7,12 +7,17 @@
 
 namespace Drupal\Core\Entity;
 
+use Drupal\Component\Utility\String;
 use Drupal\Component\Utility\Unicode;
+use Drupal\Core\Entity\Exception\EntityTypeIdLengthException;
+use Drupal\Core\StringTranslation\StringTranslationTrait;
 
 /**
  * Provides an implementation of an entity type and its metadata.
  */
 class EntityType implements EntityTypeInterface {
+
+  use StringTranslationTrait;
 
   /**
    * Indicates whether entities should be statically cached.
@@ -164,13 +169,6 @@ class EntityType implements EntityTypeInterface {
   protected $translatable = FALSE;
 
   /**
-   * Returns the config prefix used by the configuration entity type.
-   *
-   * @var string
-   */
-  protected $config_prefix;
-
-  /**
    * The human-readable name of the type.
    *
    * @var string
@@ -185,12 +183,35 @@ class EntityType implements EntityTypeInterface {
   protected $uri_callback;
 
   /**
+   * The machine name of the entity type group.
+   */
+  protected $group;
+
+  /**
+   * The human-readable name of the entity type group.
+   */
+  protected $group_label;
+
+  /**
    * Constructs a new EntityType.
    *
    * @param array $definition
    *   An array of values from the annotation.
+   *
+   * @throws \Drupal\Core\Entity\Exception\EntityTypeIdLengthException
+   *   Thrown when attempting to instantiate an entity type with too long ID.
    */
   public function __construct($definition) {
+    // Throw an exception if the entity type ID is longer than 32 characters.
+    if (Unicode::strlen($definition['id']) > static::ID_MAX_LENGTH) {
+      throw new EntityTypeIdLengthException(String::format(
+        'Attempt to create an entity type with an ID longer than @max characters: @id.', array(
+          '@max' => static::ID_MAX_LENGTH,
+          '@id' => $definition['id'],
+        )
+      ));
+    }
+
     foreach ($definition as $property => $value) {
       $this->{$property} = $value;
     }
@@ -372,23 +393,23 @@ class EntityType implements EntityTypeInterface {
   /**
    * {@inheritdoc}
    */
-  public function getListClass() {
-    return $this->getControllerClass('list');
+  public function getListBuilderClass() {
+    return $this->getControllerClass('list_builder');
   }
 
   /**
    * {@inheritdoc}
    */
-  public function setListClass($class) {
-    $this->controllers['list'] = $class;
+  public function setListBuilderClass($class) {
+    $this->controllers['list_builder'] = $class;
     return $this;
   }
 
   /**
    * {@inheritdoc}
    */
-  public function hasListClass() {
-    return $this->hasControllerClass('list');
+  public function hasListBuilderClass() {
+    return $this->hasControllerClass('list_builder');
   }
 
   /**
@@ -540,8 +561,16 @@ class EntityType implements EntityTypeInterface {
   /**
    * {@inheritdoc}
    */
+  public function isRevisionable() {
+    // Entity types are revisionable if a revision key has been specified.
+    return $this->hasKey('revision');
+  }
+
+  /**
+   * {@inheritdoc}
+   */
   public function getConfigPrefix() {
-    return isset($this->config_prefix) ? $this->config_prefix : FALSE;
+    return FALSE;
   }
 
   /**
@@ -592,6 +621,21 @@ class EntityType implements EntityTypeInterface {
   public function setUriCallback($callback) {
     $this->uri_callback = $callback;
     return $this;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getGroup() {
+    return $this->group;
+  }
+
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getGroupLabel() {
+    return !empty($this->group_label) ? $this->group_label : $this->t('Other', array(), array('context' => 'Entity type group'));
   }
 
 }

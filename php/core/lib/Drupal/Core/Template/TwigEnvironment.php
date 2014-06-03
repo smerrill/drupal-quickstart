@@ -2,12 +2,12 @@
 
 /**
  * @file
- * Definition of Drupal\Core\Template\TwigEnvironment.
+ * Contains \Drupal\Core\Template\TwigEnvironment.
  */
 
 namespace Drupal\Core\Template;
 
-use Drupal\Component\PhpStorage\PhpStorageFactory;
+use Drupal\Core\PhpStorage\PhpStorageFactory;
 use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\Extension\ThemeHandlerInterface;
 
@@ -36,16 +36,19 @@ class TwigEnvironment extends \Twig_Environment {
    */
   public function __construct(\Twig_LoaderInterface $loader = NULL, $options = array(), ModuleHandlerInterface $module_handler, ThemeHandlerInterface $theme_handler) {
     // @todo Pass as arguments from the DIC.
-    $this->cache_object = cache();
+    $this->cache_object = \Drupal::cache();
 
     // Set twig path namespace for themes and modules.
-    $namespaces = $module_handler->getModuleList();
-    foreach ($theme_handler->listInfo() as $theme => $info) {
-      $namespaces[$theme] = $info->filename;
+    $namespaces = array();
+    foreach ($module_handler->getModuleList() as $name => $extension) {
+      $namespaces[$name] = $extension->getPath();
+    }
+    foreach ($theme_handler->listInfo() as $name => $extension) {
+      $namespaces[$name] = $extension->getPath();
     }
 
-    foreach ($namespaces as $name => $filename) {
-      $templatesDirectory = dirname($filename) . '/templates';
+    foreach ($namespaces as $name => $path) {
+      $templatesDirectory = $path . '/templates';
       if (file_exists($templatesDirectory)) {
         $loader->addPath($templatesDirectory, $name);
       }
